@@ -11,6 +11,8 @@ open Suave.WebPart
 open Aardium
 open Suave
 
+type EmbeddedResources = EmbeddedResources
+
 [<EntryPoint; STAThread>]
 let main argv = 
     Ag.initialize()
@@ -30,14 +32,14 @@ let main argv =
             app.Runtime :> IRuntime, app :> IDisposable
     use __ = disposable
     
-    let app = App.app
+    let app = LineUp.app
 
     let instance = 
         app |> App.start
 
     WebPart.startServer 4321 [ 
         MutableApp.toWebPart' runtime false instance
-        Suave.Filters.prefix "/resources" >=> Reflection.assemblyWebPart (System.Reflection.Assembly.GetEntryAssembly())
+        Reflection.assemblyWebPart typeof<EmbeddedResources>.Assembly
     ]  
     
 

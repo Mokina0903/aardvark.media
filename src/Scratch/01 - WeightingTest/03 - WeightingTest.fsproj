@@ -11,6 +11,9 @@
     <OutputPath>..\..\..\bin\Debug\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="resources\lineUp.css" />
+    <Compile Include="LineUpModel.fs" />
+    <Compile Include="LineUpApp.fs" />
     <Compile Include="Model.fs" />
     <Compile Include="App.fs" />
     <Compile Include="Program.fs" />
