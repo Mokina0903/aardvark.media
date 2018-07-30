@@ -10,6 +10,7 @@ open Aardvark.UI
 open Aardvark.UI.Operators
 
 open LineUpModel
+open LineUpModel
 
 type Message = Nop
 
@@ -36,22 +37,27 @@ let view (model : MLineUp) =
                                 if i = 0 then "leftHeader"
                                 elif i = List.length config.attributes - 1 then "rightHeader"
                                 else ""
-                            th [clazz clas] [text r.name]
+                            th [clazz clas] [text r.name]                           
                         )
                     )
                 
-                    //tr []
-                    //    th [clazz  "leftHeader"] [text "Model"]
-                    //    th [] [text "Release date"]
-                    //    th [] [text "Max resolution"]
-                    //    th [clazz  "rightHeader"] [text "Low resolution"]
-                    //]
                     let! table = model.input
 
                     // preprocessing
-                    let rows  = table.rows |> Array.sortBy (fun r -> match Map.find "Release date" r with | Float s -> s |  _ -> 0.0)
+                    let rows  = table.rows |> Array.sortBy (fun r -> match Map.find "Release date" r with | Int s -> s |  _ -> 0)
 
-                    // for each column which is of kind percantage, compute min,max........
+                    //for each column which is of kind percantage, compute min, max
+                    //Max Resolution
+                    
+                        
+                    let maxMaxRes : float = table.rows |> Array.maxBy (Map.find "Max resolution") |> (fun r -> match Map.find "Max resolution" r with | Float s -> s |  _ -> 0.0)
+                    let minMaxRes : float = table.rows |> Array.minBy (fun r -> match Map.find "Max resolution" r with | Float s -> s |  _ -> 0.0) |> (fun r -> match Map.find "Max resolution" r with | Float s -> s |  _ -> 0.0)
+                    //Low Resolution
+                    let maxLowRes : float = table.rows |> Array.maxBy (fun r -> match Map.find "Low resolution" r with | Float s -> s |  _ -> 0.0) |> (fun r -> match Map.find "Low resolution" r with | Float s -> s |  _ -> 0.0)
+                    let minLowRes : float = table.rows |> Array.minBy (fun r -> match Map.find "Low resolution" r with | Float s -> s |  _ -> 0.0) |> (fun r -> match Map.find "Low resolution" r with | Float s -> s |  _ -> 0.0)
+
+                    //todo: Nullstelle zu viel!                  
+                
                     // map colname and record of min, max
                     for r in  rows  do
                         yield tr [] [
@@ -62,28 +68,24 @@ let view (model : MLineUp) =
                                         | None -> ()
                                         | Some v -> 
                                             match v with
+                                                | Int i ->
+                                                    yield text (sprintf "%i" i)
                                                 | Float v -> 
-                                                    yield text (sprintf "%.2f" v)
+                                                    //todo: min,max welcher variable sollen verwendet werden?
+                                                    let percentage = (v - minMaxRes) * 100.0 / (maxMaxRes - minMaxRes)
+                                                    let stringWidth = sprintf "width: %.2f%%" percentage
+                                                    yield div [clazz "outer"] [                                                        
+                                                        div [clazz "inner"; clazz "maxRes"; style stringWidth] []
+                                                        p [] [
+                                                            span [clazz "alignLeft"][text (sprintf "%.2f%%" percentage)]
+                                                            span [clazz "alignRight"][text (sprintf "%.2f" v)]
+                                                        ]
+                                                    ]
                                                 | Name s -> 
                                                     yield text s
                                                 | _ -> ()
                                 ]
                         ]
-                    
-                    //tr [] [
-                    //    td [][text "Canon PowerShot G1"]
-                    //    td [][text "2000"]
-                    //    td [] [
-                    //        div [clazz "outer"] [
-                    //            div [clazz "inner"; clazz "maxRes"] [text "36%"]
-                    //        ]
-                    //    ]
-                    //    td [] [
-                    //        div [clazz "outer"] [
-                    //            div [clazz "inner"; clazz "lowRes"] [text "45%"]
-                    //        ]
-                    //    ]
-                    //]
                 }
         )
     ]

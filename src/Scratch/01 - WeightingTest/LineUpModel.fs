@@ -6,6 +6,7 @@ open System
 open System.IO
 
 type Value =
+    | Int of int
     | Float of float
     | Name  of string
     | Missing
@@ -20,6 +21,7 @@ type Table =
 
 module Parsing =
     open System.Globalization
+    open System.Numerics
 
     let example1 = @"C:\Users\wissmann\Desktop\cameras.csv"
 
@@ -33,8 +35,12 @@ module Parsing =
                     match t,s with
                         | _, "" -> Missing
                         | "STRING",s -> Name s
+                        | "INTEGER",s -> 
+                            match Int32.TryParse(s) with 
+                                | (true,v) -> Int v
+                                | _ -> failwithf "could not parse: %s (%s)" s n
                         | "DOUBLE",s -> 
-                            match Double.TryParse(s) with 
+                            match Double.TryParse(s.Replace(".",",")) with 
                                 | (true,v) -> Float v
                                 | _ -> failwithf "could not parse: %s (%s)" s n
                         | _ -> failwithf "no parser for: %s" s
