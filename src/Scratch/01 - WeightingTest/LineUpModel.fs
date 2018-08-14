@@ -5,6 +5,9 @@ namespace LineUpModel
 open System
 open System.IO
 
+type Message =
+    | AddAttribute
+
 type Value =
     | Int of int
     | Float of float
@@ -19,11 +22,23 @@ type Table =
         rows           : array<Row>
     }
 
+type Statistics =
+    {
+        min : float
+        max : float
+        avg : float
+    }
+
+
+module Statistics =
+    let empty = { min = 0.0; max = 0.0; avg = 0.0 }
+
+
 module Parsing =
     open System.Globalization
     open System.Numerics
 
-    let example1 = @"C:\Users\wissmann\Desktop\cameras.csv"
+    let example1 = @"C:\Users\wissmann\Desktop\cameras_reduced.csv"
 
     let getRowDescription (nameLine : string) (typeLine: string) : RowDescription  =
         let names = nameLine.Split(';') |> Array.toList
@@ -71,8 +86,10 @@ module Parsing =
 
 
 open Aardvark.Base.Incremental
+open Aardvark.Base
 
-type Kind = PlainNumber | PlainString | Bar
+type Target = Min | Max
+type Kind = Plain | Bar of Target | Score
 
 type Attribute = 
     {
@@ -85,27 +102,65 @@ type Config =
         attributes : list<Attribute>
     }
 
+type Weight =
+    {
+        name: string
+        weight: float
+    }
+
+[<DomainType>]
+type VisibleAttribute =
+    {
+        [<NonIncremental>]
+        sortKey: int
+        name: string
+        weight: Option<float>
+    }
+
 [<DomainType>]
 type LineUp =
     {
         input : Table
         config : Config
+        visibleAttributes: hmap<string, VisibleAttribute>
+        weights: list<Weight>
     }
-                    //th [clazz  "leftHeader"] [text "Model"]
-                    //th [] [text "Release date"]
-                    //th [] [text "Max resolution"]
-                    //th [clazz  "rightHeader"] [text "Low resolution"]
+                   
 module LineUp =
-    let defaultModel =
+    let defaultModel () =
+        let attribs = 
+            [
+                { name = "Score"; kind = Score}
+                { name = "Model"; kind = Plain }
+                { name = "Release date"; kind = Plain }
+                { name = "Max resolution"; kind = Bar Max }
+                { name = "Low resolution"; kind = Bar Max }
+                { name = "Effective pixels"; kind = Bar Max }
+                { name = "Zoom wide (W)"; kind = Bar Max}
+                { name = "Zoom tele (T)"; kind = Bar Max}
+                { name = "Normal focus range"; kind = Bar Max}
+                { name = "Macro focus range"; kind = Bar Max}
+                { name = "Storage included"; kind = Bar Max}
+                { name = "Weight (inc. batteries)"; kind = Bar Min}
+                { name = "Dimensions"; kind = Bar Min}
+                { name = "Price"; kind = Bar Min }
+                            
+            ]
         {
             input = Parsing.parse Parsing.example1
             config = 
                 {
-                    attributes = [
-                        { name = "Model"; kind = PlainString }
-                        { name = "Release date"; kind = PlainNumber }
-                        { name = "Max resolution"; kind = PlainNumber } //bar
-                        { name = "Low resolution"; kind = PlainNumber } //bar
-                    ]
+                    attributes = 
+                        attribs
                 }
+            visibleAttributes =
+                [
+                    { name = "Score"; kind = Score}
+                    { name = "Model"; kind = Plain }
+                    { name = "Release date"; kind = Plain }
+                    { name = "Max resolution"; kind = Bar Max }
+                    { name = "Low resolution"; kind = Bar Max }
+                ]|> List.mapi (fun i a -> a.name, { name = a.name; sortKey = i; weight = Some 0.5 }) |> HMap.ofList
+            
+            weights = [{ name = "Price"; weight = 0.8}]
         }

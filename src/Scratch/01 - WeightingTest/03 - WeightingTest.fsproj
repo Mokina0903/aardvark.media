@@ -12,6 +12,8 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="resources\lineUp.css" />
+    <Compile Include="NewLineUpModel.fs" />
+    <Compile Include="NewLineUpApp.fs" />
     <Compile Include="LineUpModel.fs" />
     <Compile Include="LineUpApp.fs" />
     <Compile Include="Model.fs" />

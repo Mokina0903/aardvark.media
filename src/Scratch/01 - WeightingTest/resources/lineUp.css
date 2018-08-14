@@ -66,4 +66,28 @@ p .alignright {
 	float: right;
 }
 
+table tbody, table thead
+{
+    display: block;
+}
 
+table tbody 
+{
+   overflow: auto;
+   height: 600px;
+}
+
+th
+{
+    width: 250px;
+}
+
+td
+{
+    width: 250px;
+}
+
+.attributesDiv {
+	border: 2px solid pink;
+	float = left;
+}

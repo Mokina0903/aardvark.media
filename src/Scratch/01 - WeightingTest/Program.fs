@@ -32,7 +32,7 @@ let main argv =
             app.Runtime :> IRuntime, app :> IDisposable
     use __ = disposable
     
-    let app = LineUp.app
+    let app = NewLineUp.app()
 
     let instance = 
         app |> App.start
