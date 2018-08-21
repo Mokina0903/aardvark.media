@@ -24,6 +24,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="paket.references" />
+    <EmbeddedResource Include="resources\lineUp.js" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Aardvark.UI.Primitives\Aardvark.UI.Primitives.fsproj" />

@@ -17,13 +17,15 @@ module Mutable =
         let _weights = ResetMod.Create(__initial.weights)
         let _rows = ResetMod.Create(__initial.rows)
         let _visibleOrder = ResetMod.Create(__initial.visibleOrder)
-        let _scores = ResetMod.Create(__initial.scores)
+        let _showOptions = ResetMod.Create(__initial.showOptions)
+        let _colors = ResetMod.Create(__initial.colors)
         
         member x.header = _header :> IMod<_>
         member x.weights = _weights :> IMod<_>
         member x.rows = _rows :> IMod<_>
         member x.visibleOrder = _visibleOrder :> IMod<_>
-        member x.scores = _scores :> IMod<_>
+        member x.showOptions = _showOptions :> IMod<_>
+        member x.colors = _colors :> IMod<_>
         
         member x.Current = __current :> IMod<_>
         member x.Update(v : NewLineUpModel.Table) =
@@ -34,7 +36,8 @@ module Mutable =
                 ResetMod.Update(_weights,v.weights)
                 ResetMod.Update(_rows,v.rows)
                 ResetMod.Update(_visibleOrder,v.visibleOrder)
-                ResetMod.Update(_scores,v.scores)
+                ResetMod.Update(_showOptions,v.showOptions)
+                ResetMod.Update(_colors,v.colors)
                 
         
         static member Create(__initial : NewLineUpModel.Table) : MTable = MTable(__initial)
@@ -75,9 +78,15 @@ module Mutable =
                     override x.Set(r,v) = { r with visibleOrder = v }
                     override x.Update(r,f) = { r with visibleOrder = f r.visibleOrder }
                 }
-            let scores =
-                { new Lens<NewLineUpModel.Table, System.Double[]>() with
-                    override x.Get(r) = r.scores
-                    override x.Set(r,v) = { r with scores = v }
-                    override x.Update(r,f) = { r with scores = f r.scores }
+            let showOptions =
+                { new Lens<NewLineUpModel.Table, System.Boolean>() with
+                    override x.Get(r) = r.showOptions
+                    override x.Set(r,v) = { r with showOptions = v }
+                    override x.Update(r,f) = { r with showOptions = f r.showOptions }
+                }
+            let colors =
+                { new Lens<NewLineUpModel.Table, Microsoft.FSharp.Collections.Map<System.String,Aardvark.Base.C3b>>() with
+                    override x.Get(r) = r.colors
+                    override x.Set(r,v) = { r with colors = v }
+                    override x.Update(r,f) = { r with colors = f r.colors }
                 }

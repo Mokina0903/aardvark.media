@@ -2,6 +2,8 @@
 
 type Target = Min | Max
 type Kind = Plain | Bar of Target
+type SortState = Asc | Desc | Inactive
+
 
 type Value =
     | Missing
@@ -28,6 +30,7 @@ type Attribute =
         name : string
         kind : Kind
         stats: Statistics
+        sortState: SortState
     }
 
 type RowDescription = list<string * (string -> Value)>
@@ -39,6 +42,8 @@ type Row =
 
 
  open Aardvark.Base.Incremental
+ open Aardvark.Base
+
 [<DomainType>]
 type Table =
     {
@@ -46,13 +51,15 @@ type Table =
         weights : Map<string, Option<float>>
         rows : array<Row>
         visibleOrder : List<string>
-        scores : array<float>
+        showOptions: bool
+        colors : Map<string, C3b>
     }
 
 module Parsing =
     open System.Globalization
     open System.Numerics
     open System.IO
+    open Aardvark.Base
 
     let example1 = @"C:\Users\wissmann\Desktop\cameras_reduced.csv"
 
@@ -79,38 +86,48 @@ module Parsing =
             ) pairs
         nameParser
     
-    let getStatistics (name : string) : Statistics  =
-        
-        failwith ""
-
     let getHeader (nameLine : string) (typeLine: string) : Map<string, Attribute> =
         let names = nameLine.Split(';') |> Array.toList
         let types = typeLine.Split(';') |> Array.toList
-        let pairs = List.zip names types
+        let scoreAttribute = 
+            {
+                name  = "Score"
+                kind = Plain
+                stats  = {min = 0.0; max = 0.0}
+                sortState = Inactive
+            }
 
+        let pairs = List.zip names types     
         pairs |> List.mapi (fun i (n, t) -> 
             let k = 
                 match t with
                     | "STRING" -> Plain
-                    | "INTEGER" -> Bar Max
-                    | "DOUBLE" -> Bar Max
+                    | "INTEGER" -> Bar Target.Max
+                    | "DOUBLE" ->
+                        match n with
+                            | "Weight" | "Dimension" | "Price" -> Bar Target.Min 
+                            | _ -> Bar Target.Max
+
                     | _ -> Plain
             let atr = 
                 {
                     name  = n
                     kind = k
-                    stats  = {min = 0.0; max = 0.0}
+                    stats  = {min = 0.0; max = 0.0} //calculate here
+                    sortState = Inactive
                 }
             (n, atr)
-        ) |> Map.ofList
+        ) |> Map.ofList |> Map.add "Score" scoreAttribute 
 
     let parseRow (desc : RowDescription) (line : string) : Row =  
         {
+            //add initial score
             values = 
                 line.Split(';') 
                     |> Array.toList
-                    |> List.map2 (fun (name,parser) (stringValue) -> name, (parser stringValue)) desc
+                    |> List.map2 (fun (name,parser) (stringValue) -> name, (parser stringValue)) desc              
                     |> Map.ofList
+                    |> Map.add "Score" (Value.Float 0.0)
         }
 
     let parse (fileName : string) =
@@ -118,10 +135,10 @@ module Parsing =
         if lines.Length >=2 then
             let description = getRowDescription lines.[0] lines.[1]
             let rows =
-                [| for i in 2 .. lines.Length - 1 do
+                [| for i in 2 .. lines.Length - 1 do                   
                     yield parseRow description lines.[i]
                 |]
-           
+            
             let h = getHeader lines.[0] lines.[1]
             let computeStatistics (k : string) (v : Attribute) : Attribute =
                 
@@ -138,15 +155,30 @@ module Parsing =
                             max = Array.max values
                         }
                 }
-
-            let newHeader = Map.map computeStatistics h
-
+           
+            let visibleOrd = 
+                "Score" :: (h
+                    |> Map.filter (fun k _ -> k <> "Score")
+                    |> Map.toList
+                    |> List.map (fun (k, v) -> k))
             {
-                header = newHeader
+                header = Map.map computeStatistics h   
                 rows = rows
-                weights = h |> Map.map (fun key _ -> Some 1.0)
-                visibleOrder = h |> Map.toList |> List.map (fun (k, v) -> k)
-                scores = rows |> Array.map (fun x -> 0.0)
+                weights = 
+                    h |> Map.map (fun key _ -> 
+                                       match key with
+                                       | "Score" -> None
+                                       | _ -> Some (1.0 / float (visibleOrd.Length-1)) )
+                visibleOrder = visibleOrd
+                showOptions = true
+                colors =
+                    h |> Map.map (fun key _ ->
+                                        match key with
+                                        | "Dimensions" -> C3b.DarkGreen
+                                        | "Low Resolution" -> C3b.Cyan
+                                        | "Max Resolution" -> C3b.DarkRed
+                                        | "Price" -> C3b.DarkMagenta
+                                        | _ -> C3b.DarkYellow )
             }
         else 
             failwith "not enough lines"
@@ -155,43 +187,43 @@ module Parsing =
 module NewLineUp =
     open Aardvark.Base.Geometry
 
-    let defaultModel () : Table =
+    let defaultModel () : Table =  
         Parsing.parse Parsing.example1
 
-    let defaultModelTest () =
+    //let defaultModelTest () =
        
-        let headerList = 
-            [
-                ("model", { name = "Model"; stats = {min = 0.0; max = 0.0}; kind = Plain })
-                ("year", { name = "Year"; stats = {min = 1980.0; max = 2020.0}; kind = Bar Max})
-                //("date", { name = "Release date"; stats = {min = 0.0; max = 0.0}; kind = Plain })
-                //("maxRes", { name = "Max resolution"; stats = {min = 0.0; max = 0.0}; kind = Bar Max })
-                //("lowRes", { name = "Low resolution"; stats = {min = 0.0; max = 0.0}; kind = Bar Max })
-                //("effectivePixel", { name = "Effective pixels"; stats = {min = 0.0; max = 0.0}; kind = Bar Max })
-                //("zoomWide", { name = "Zoom wide (W)"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
-                //("zoomTele", { name = "Zoom tele (T)"; stats = {min = 0.0; max = 0.0};kind = Bar Max})
-                //("normalFocus", { name = "Normal focus range"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
-                //("macroFocus", { name = "Macro focus range"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
-                //("storage", { name = "Storage included"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
-                //("weight", { name = "Weight (inc. batteries)"; stats = {min = 0.0; max = 0.0}; kind = Bar Min})
-                //("dimension", { name = "Dimensions"; stats = {min = 0.0; max = 0.0}; kind = Bar Min})
-                //("price", { name = "Price"; stats = {min = 0.0; max = 0.0}; kind = Bar Min })
-            ]
+    //    let headerList = 
+    //        [
+    //            //("model", { name = "Model"; stats = {min = 0.0; max = 0.0}; kind = Plain })
+    //            //("year", { name = "Year"; stats = {min = 1980.0; max = 2020.0}; kind = Bar Max})
+    //            //("date", { name = "Release date"; stats = {min = 0.0; max = 0.0}; kind = Plain })
+    //            //("maxRes", { name = "Max resolution"; stats = {min = 0.0; max = 0.0}; kind = Bar Max })
+    //            //("lowRes", { name = "Low resolution"; stats = {min = 0.0; max = 0.0}; kind = Bar Max })
+    //            //("effectivePixel", { name = "Effective pixels"; stats = {min = 0.0; max = 0.0}; kind = Bar Max })
+    //            //("zoomWide", { name = "Zoom wide (W)"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
+    //            //("zoomTele", { name = "Zoom tele (T)"; stats = {min = 0.0; max = 0.0};kind = Bar Max})
+    //            //("normalFocus", { name = "Normal focus range"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
+    //            //("macroFocus", { name = "Macro focus range"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
+    //            //("storage", { name = "Storage included"; stats = {min = 0.0; max = 0.0}; kind = Bar Max})
+    //            //("weight", { name = "Weight (inc. batteries)"; stats = {min = 0.0; max = 0.0}; kind = Bar Min})
+    //            //("dimension", { name = "Dimensions"; stats = {min = 0.0; max = 0.0}; kind = Bar Min})
+    //            //("price", { name = "Price"; stats = {min = 0.0; max = 0.0}; kind = Bar Min })
+    //        ]
 
-        let data = 
-            [|
-                { values = Map.ofList [("model", String "Hugo"); ("score", Float 1000.0); ("year", Int 2010)] }
-                { values = Map.ofList [("model", String "Blub"); ("score", Float 6516.0); ("year", Int 1980)] }
-                { values = Map.ofList [("model", String "Blah"); ("score", Float 1.0); ("year", Int 2020)] }
-            |]
+    //    let data = 
+    //        [|
+    //            { values = Map.ofList [("model", String "Hugo"); ("score", Float 1000.0); ("year", Int 2010)] }
+    //            { values = Map.ofList [("model", String "Blub"); ("score", Float 6516.0); ("year", Int 1980)] }
+    //            { values = Map.ofList [("model", String "Blah"); ("score", Float 1.0); ("year", Int 2020)] }
+    //        |]
 
-        {
-            header = Map.ofList headerList
-            rows = data
-            weights = Map.ofList [ ("model", None); ("score", None); ("year", Some 1.0) ]
-            visibleOrder = [ "model"; "score"; "year"]
-            scores = [| 0.0; 0.0; 0.0 |]
-        }
+    //    {
+    //        header = Map.ofList headerList
+    //        rows = data
+    //        weights = Map.ofList [ ("model", None); ("score", None); ("year", Some 1.0) ]
+    //        visibleOrder = [ "model"; "score"; "year"]
+    //        scores = [| 0.0; 0.0; 0.0 |]
+    //    }
         
         //let attribs = 
         //    [
