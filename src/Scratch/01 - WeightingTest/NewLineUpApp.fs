@@ -27,7 +27,6 @@ type Message =
     | Sort of string
 
 let CalculateScore model =
-
     let updatedRows = 
         model.rows |> Array.map (fun row -> 
             let score = 
@@ -56,12 +55,46 @@ let CalculateScore model =
     { model with rows = updatedRows}
 
 let colorToHex (color : C3b) = 
-        let bytes = [| color.R; color.G; color.B |]
-        let colorString = 
-            bytes 
-                |> Array.map (fun (x : byte) -> System.String.Format("{0:X2}", x))
-                |> String.concat System.String.Empty
-        "#"+colorString
+    let bytes = [| color.R; color.G; color.B |]
+    let colorString = 
+        bytes 
+            |> Array.map (fun (x : byte) -> System.String.Format("{0:X2}", x))
+            |> String.concat System.String.Empty
+    "#"+colorString
+
+let getScoreDiv (width: float) (color: string) =
+    div [style (sprintf "width: %.2f%%; background : %s" width color)] []
+
+//let CalculateScore model =
+//    let updatedRows = 
+//        model.rows |> Array.map (fun row -> 
+//            let score = 
+//                row.values
+//                    |> Map.toList
+//                    |> List.map (fun (k, v) ->
+//                        match model.visibleOrder |> List.contains k with
+//                            | true -> 
+//                                let color = model.colors |> Map.find k
+//                                match model.weights |> Map.tryFind k with
+//                                    | Some (Some w) -> // w * (Value.toFloat v)
+//                                        let attr = model.header |> Map.find k //todo tryFind
+//                                        let stats = attr.stats
+//                                        let v = v |>  Value.toFloat
+//                                        let width = match attr.kind with
+//                                            | Bar Max -> w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
+//                                            | Bar Min -> w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
+//                                            | _ -> 0.0
+//                                        drawScoreDiv width (colorToHex color)
+//                                    | _ -> 0.0
+//                            | false -> 0.0
+//                    ) 
+//            let updatedAttrList = row.values |> Map.map ( fun k v ->
+//                match k with
+//                    | "Score" -> Value.Float score
+//                    | _ -> v)
+//            { row with values = updatedAttrList})
+//    { model with rows = updatedRows}
+
 
 let myOnChange (cb : bool -> 'msg) = 
         onEvent "onchange" ["event.target.checked"] (List.head >> Pickler.json.UnPickleOfString >> cb)
@@ -277,7 +310,35 @@ let view (model : MTable) =
                                                 ]
                                             ]                                
                                         )
-                                yield tr [] (columns)
+
+                                let stackedBarForScore = 
+                                    let manyDiffs : list<DomNode<_>> = 
+                                        visibleOrder |> List.map (fun x -> 
+                                            let value = row.values |> Map.find x
+                                            let attribute = headers |> Map.find x
+                                            let w = 
+                                                match weights |> Map.tryFind x with
+                                                    | Some (Some w) -> w
+                                                    | _ -> 0.0
+                                            let width = 
+                                                match attribute.kind with
+                                                    |Kind.Bar target -> 
+                                                        let stats = attribute.stats
+                                                        let v = value |>  Value.toFloat 
+
+                                                        match target with
+                                                            | Max -> w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
+                                                            | Min ->  w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
+                                                        | _ -> 0.0
+                                            let color = 
+                                                match colors |> Map.tryFind x with
+                                                    | Some c ->  colorToHex c
+                                                    | _ -> colorToHex C3b.Black
+                                            div [style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" width color)] []
+                                        )
+
+                                    div [clazz "scoreWrapper"] manyDiffs // stackedbar...
+                                yield tr [] (stackedBarForScore :: columns)
                             ]
                     }
                 )
