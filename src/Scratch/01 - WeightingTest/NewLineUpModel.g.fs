@@ -85,7 +85,7 @@ module Mutable =
                     override x.Update(r,f) = { r with showOptions = f r.showOptions }
                 }
             let colors =
-                { new Lens<NewLineUpModel.Table, Microsoft.FSharp.Collections.Map<System.String,Aardvark.Base.C3b>>() with
+                { new Lens<NewLineUpModel.Table, Microsoft.FSharp.Collections.Map<System.String,Aardvark.Base.C4b>>() with
                     override x.Get(r) = r.colors
                     override x.Set(r,v) = { r with colors = v }
                     override x.Update(r,f) = { r with colors = f r.colors }

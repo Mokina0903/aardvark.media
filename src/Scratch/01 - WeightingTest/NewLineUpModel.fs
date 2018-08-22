@@ -1,7 +1,7 @@
 ﻿namespace NewLineUpModel
 
 type Target = Min | Max
-type Kind = Plain | Bar of Target
+type Kind = Score | Plain | Bar of Target
 type SortState = Asc | Desc | Inactive
 
 
@@ -52,7 +52,7 @@ type Table =
         rows : array<Row>
         visibleOrder : List<string>
         showOptions: bool
-        colors : Map<string, C3b>
+        colors : Map<string, C4b>
     }
 
 module Parsing =
@@ -92,7 +92,7 @@ module Parsing =
         let scoreAttribute = 
             {
                 name  = "Score"
-                kind = Plain
+                kind = Score
                 stats  = {min = 0.0; max = 0.0}
                 sortState = Inactive
             }
@@ -140,6 +140,7 @@ module Parsing =
                 |]
             
             let h = getHeader lines.[0] lines.[1]
+
             let computeStatistics (k : string) (v : Attribute) : Attribute =
                 
                 let p (row : Row) : float =
@@ -155,7 +156,7 @@ module Parsing =
                             max = Array.max values
                         }
                 }
-           
+
             let visibleOrd = 
                 "Score" :: (h
                     |> Map.filter (fun k _ -> k <> "Score")
@@ -172,13 +173,26 @@ module Parsing =
                 visibleOrder = visibleOrd
                 showOptions = true
                 colors =
-                    h |> Map.map (fun key _ ->
-                                        match key with
-                                        | "Dimensions" -> C3b.DarkGreen
-                                        | "Low Resolution" -> C3b.Cyan
-                                        | "Max Resolution" -> C3b.DarkRed
-                                        | "Price" -> C3b.DarkMagenta
-                                        | _ -> C3b.DarkYellow )
+                    let seqH = h |> Map.toSeq |> Seq.zip [0..h.Count-1]
+                    let colors = 
+                        [| 
+                            C4b(179,88,6,255)
+                            C4b(127,59,8,255)
+                            C4b(224,130,20,0)
+                            C4b(253,184,99,0)
+                            C4b(254,224,182,0)
+                            C4b(247,247,247,0)
+                            C4b(216,218,235,0)
+                            C4b(178,171,210,0)
+                            C4b(128,115,172,0)
+                            C4b(84,39,136,255)
+                            C4b(45,0,75,255)
+                        |]
+                    
+                    seqH 
+                        |> Seq.map (fun (i,h) -> ((fst h), colors.[i % colors.Length]))
+                        |> Map.ofSeq
+                        
             }
         else 
             failwith "not enough lines"

@@ -195,6 +195,10 @@ let dependencies =
 
 
 let view (model : MTable) =
+
+
+
+
     body [] [
         require dependencies (
             onBoot "init('__ID__')" (
@@ -216,13 +220,18 @@ let view (model : MTable) =
                                             | Asc -> "angle up icon"
                                             | Desc ->"angle down icon"
                                             | Inactive -> ""
-                                    let col =
+                                    let (background, fontColor) =
                                         match colors |> Map.tryFind visibleName with
-                                            | Some c -> c
-                                            | None -> C3b.Black
+                                            | Some c -> 
+                                                let textCol = 
+                                                    match c.A with
+                                                        | 0uy -> C3b.Black
+                                                        | _ -> C3b.White
+                                                (c.ToC3b(), textCol)
+                                            | None -> (C3b.Black, C3b.White)
                                     
                                                         
-                                    yield th [onClick (fun _ -> Sort visibleName); style ("background: " + (colorToHex col))] [
+                                    yield th [onClick (fun _ -> Sort visibleName); style ("background: " + (colorToHex background) + "; color: " + (colorToHex fontColor))] [
                                         text attr.name;
                                         div[clazz "sortingSymbol"] [
                                             i [clazz iconClass][]]
@@ -248,9 +257,8 @@ let view (model : MTable) =
                                                         | Bar Min -> "ui orange basic mini button"
                                                         | _ -> ""
                                       
-
                                                 match attr.kind with
-                                                    | Plain -> yield th [][text ""]
+                                                    | Plain | Score -> yield th [][text ""]
                                                     | _ ->
                                                         yield th [] [                                           
                                                             div[clazz "ui input"] [
@@ -268,8 +276,8 @@ let view (model : MTable) =
                                                                             |  _ -> "0.0"                                 
                                                                     ]         
                                                             ]
-                                                            br []                                           
-                                                            button [clazz targetButtonClass;
+                                                                                                      
+                                                            button [clazz targetButtonClass; clazz "targetButtons"
                                                                     onClick( fun _ -> SetTargetMode (visibleName, newTarget))
                                                                     ] [text (match attr.kind with
                                                                             | Bar Max -> "Max"
@@ -299,46 +307,61 @@ let view (model : MTable) =
                                                 match target with
                                                     | Max -> ((v - stats.min) * 100.0 / (stats.max - stats.min))
                                                     | Min -> 100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min))
+                                             
+                                            let color = 
+                                                match colors |> Map.tryFind x with
+                                                    | Some c -> colorToHex (c.ToC3b())
+                                                    | _ -> colorToHex C3b.Black
 
                                             td [] [
                                                 div [clazz "outer"] [                                                        
-                                                    div [clazz "inner"; style (sprintf "width: %.2f%%" percentage)] []
+                                                    div [clazz "inner"; style (sprintf "width: %.2f%%; background: %s" percentage color)] []
                                                     p [] [
                                                         span [clazz "alignLeft"][text (sprintf "%.2f%%" percentage)]
                                                         span [clazz "alignRight"][text (sprintf "%.2f" v)]
                                                     ]
                                                 ]
-                                            ]                                
+                                            ]
+                                         | Kind.Score -> 
+
+                                            let scoreSum =
+                                                match value with                                                       
+                                                            | Float f -> (sprintf "%.2f%%" f)
+                                                            | _ -> ""
+                                            
+                                            let manyDiffs : list<DomNode<_>> = 
+                                                visibleOrder |> List.map (fun x -> 
+                                                    let value = row.values |> Map.find x
+                                                    let attribute = headers |> Map.find x
+                                                    let w = 
+                                                        match weights |> Map.tryFind x with
+                                                            | Some (Some w) -> w
+                                                            | _ -> 0.0
+                                                    let width = 
+                                                        match attribute.kind with
+                                                            |Kind.Bar target -> 
+                                                                let stats = attribute.stats
+                                                                let v = value |>  Value.toFloat 
+
+                                                                match target with
+                                                                    | Max -> w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
+                                                                    | Min ->  w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
+                                                                | _ -> 0.0
+                                                    let color = 
+                                                        match colors |> Map.tryFind x with
+                                                            | Some c -> colorToHex (c.ToC3b())
+                                                            | _ -> colorToHex C3b.Black
+                                            
+                                                    div [style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" width color)] []
+                                                )
+                                   
+                                            let stackBar = div [clazz "scoreWrapper"; clazz "innerScore"] manyDiffs
+                                            div [clazz "outerScore"][
+                                                stackBar;
+                                                p [][
+                                                    span[clazz "alignRight"][text scoreSum]]] // stackedbar...
                                         )
-
-                                let stackedBarForScore = 
-                                    let manyDiffs : list<DomNode<_>> = 
-                                        visibleOrder |> List.map (fun x -> 
-                                            let value = row.values |> Map.find x
-                                            let attribute = headers |> Map.find x
-                                            let w = 
-                                                match weights |> Map.tryFind x with
-                                                    | Some (Some w) -> w
-                                                    | _ -> 0.0
-                                            let width = 
-                                                match attribute.kind with
-                                                    |Kind.Bar target -> 
-                                                        let stats = attribute.stats
-                                                        let v = value |>  Value.toFloat 
-
-                                                        match target with
-                                                            | Max -> w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
-                                                            | Min ->  w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
-                                                        | _ -> 0.0
-                                            let color = 
-                                                match colors |> Map.tryFind x with
-                                                    | Some c ->  colorToHex c
-                                                    | _ -> colorToHex C3b.Black
-                                            div [style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" width color)] []
-                                        )
-
-                                    div [clazz "scoreWrapper"] manyDiffs // stackedbar...
-                                yield tr [] (stackedBarForScore :: columns)
+                                yield tr [] (columns)
                             ]
                     }
                 )

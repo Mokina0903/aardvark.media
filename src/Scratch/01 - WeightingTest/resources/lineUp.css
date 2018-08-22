@@ -57,12 +57,21 @@ tr:hover {background-color: #f5f5f5;}
 	position: absolute;
 }
 
-.maxRes {
-	background-color: #C06C84;
+.outerScore {
+	width: 150px;
+	height: 34px;
+	padding: 2px;
+    display: flex;
+  	flex-direction: column;
+  	justify-content: center;
+  	border-radius: 5px;
+	position: relative;
 }
 
-.lowRes {
-	background-color: #F8B195;
+.innerScore {
+	height: 30px;
+	border-radius: 3px;
+	position: absolute;
 }
 
 p {
@@ -87,9 +96,8 @@ p .alignright {
 }
 
 .weightInput {
-	width: 50%;
-	height: 20px;
-	margin-bottom: 50px;
+	width: 80px;
+	height: 28px;
 }
 
 .scoreWrapper {
@@ -97,3 +105,6 @@ p .alignright {
 	height: 30px;
 }
 
+.targetButtons {
+	float: right;
+}
