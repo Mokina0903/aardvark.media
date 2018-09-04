@@ -31,6 +31,7 @@ type Attribute =
         kind : Kind
         stats: Statistics
         sortState: SortState
+        selected: bool
     }
 
 type RowDescription = list<string * (string -> Value)>
@@ -95,6 +96,7 @@ module Parsing =
                 kind = Score
                 stats  = {min = 0.0; max = 0.0}
                 sortState = Inactive
+                selected = false
             }
 
         let pairs = List.zip names types     
@@ -115,6 +117,7 @@ module Parsing =
                     kind = k
                     stats  = {min = 0.0; max = 0.0} //calculate here
                     sortState = Inactive
+                    selected = false
                 }
             (n, atr)
         ) |> Map.ofList |> Map.add "Score" scoreAttribute 

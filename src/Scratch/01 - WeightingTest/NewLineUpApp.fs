@@ -19,6 +19,7 @@ type Message =
     | SetTargetMode of (string * Kind)
     | SetWeight of (string * float)
     | AddAttributeAt of (string * int) // ASK HARRI
+    | Highlight of (string * bool)
     | AddAttribute of string
     | RemoveAttribute of string
     | CalculateScore
@@ -139,6 +140,17 @@ let update (model : Table) (msg : Message) =
                     | _ -> model.visibleOrder
             CalculateScore { model with visibleOrder = newVisibleOrder }
 
+        | Highlight (key, isSelected) ->
+            let header = model.header
+            match header |> Map.tryFind key with
+                | None -> model
+                | Some currentAttr ->    
+                    let newHeader = header |> Map.map (fun k a -> 
+                        match k = key with
+                            | true -> {currentAttr with selected = isSelected}
+                            | false -> {a with selected = false})
+                    { model with header = newHeader }
+
         | CalculateScore -> CalculateScore model
 
         | Sort key ->
@@ -197,9 +209,9 @@ let dependencies =
 let view (model : MTable) =
 
 
-
-
-    body [] [
+    body [] [     
+        
+        
         require dependencies (
             onBoot "init('__ID__')" (
                 Incremental.table (AttributeMap.ofList [clazz "mainTable"; "border" => "0"; "cellspacing" => "0"; style "border-collapse:collapse;"]) <|
@@ -229,12 +241,16 @@ let view (model : MTable) =
                                                         | _ -> C3b.White
                                                 (c.ToC3b(), textCol)
                                             | None -> (C3b.Black, C3b.White)
-                                    
+                                    let selected =
+                                        match attr.selected with
+                                        | true -> "selected"
+                                        | _ -> ""
                                                         
-                                    yield th [onClick (fun _ -> Sort visibleName); style ("background: " + (colorToHex background) + "; color: " + (colorToHex fontColor))] [
+                                    yield th [clazz selected; onClick (fun _ -> Sort visibleName); style ("background: " + (colorToHex background) + "; color: " + (colorToHex fontColor)); onMouseMove (fun _ -> Highlight (visibleName, true)); onMouseLeave (fun _ -> Highlight (visibleName, false))] [
                                         text attr.name;
                                         div[clazz "sortingSymbol"] [
-                                            i [clazz iconClass][]]
+                                            i [clazz iconClass][]
+                                            ]
                                     ]
                                 ]
 
@@ -283,7 +299,7 @@ let view (model : MTable) =
                                                                             | Bar Max -> "Max"
                                                                             | Bar Min -> "Min"
                                                                             | _ -> ""
-                                                                            )]
+                                                                    )]
                                                         ]
                                             ]                                                                            
                             ]
@@ -312,9 +328,14 @@ let view (model : MTable) =
                                                 match colors |> Map.tryFind x with
                                                     | Some c -> colorToHex (c.ToC3b())
                                                     | _ -> colorToHex C3b.Black
+                                            
+                                            let selected =
+                                                match attribute.selected with
+                                                | true -> "selected"
+                                                | _ -> ""
 
                                             td [] [
-                                                div [clazz "outer"] [                                                        
+                                                div [clazz selected; clazz "outer"] [                                                        
                                                     div [clazz "inner"; style (sprintf "width: %.2f%%; background: %s" percentage color)] []
                                                     p [] [
                                                         span [clazz "alignLeft"][text (sprintf "%.2f%%" percentage)]
@@ -322,19 +343,19 @@ let view (model : MTable) =
                                                     ]
                                                 ]
                                             ]
-                                         | Kind.Score -> 
 
+                                         | Kind.Score -> 
                                             let scoreSum =
                                                 match value with                                                       
                                                             | Float f -> (sprintf "%.2f%%" f)
                                                             | _ -> ""
                                             
                                             let manyDiffs : list<DomNode<_>> = 
-                                                visibleOrder |> List.map (fun x -> 
-                                                    let value = row.values |> Map.find x
-                                                    let attribute = headers |> Map.find x
+                                                visibleOrder |> List.map (fun key -> 
+                                                    let value = row.values |> Map.find key
+                                                    let attribute = headers |> Map.find key
                                                     let w = 
-                                                        match weights |> Map.tryFind x with
+                                                        match weights |> Map.tryFind key with
                                                             | Some (Some w) -> w
                                                             | _ -> 0.0
                                                     let width = 
@@ -348,11 +369,16 @@ let view (model : MTable) =
                                                                     | Min ->  w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
                                                                 | _ -> 0.0
                                                     let color = 
-                                                        match colors |> Map.tryFind x with
+                                                        match colors |> Map.tryFind key with
                                                             | Some c -> colorToHex (c.ToC3b())
                                                             | _ -> colorToHex C3b.Black
+                                                    
+                                                    let selected =
+                                                        match attribute.selected with
+                                                        | true -> "selected"
+                                                        | _ -> ""
                                             
-                                                    div [style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" width color)] []
+                                                    div [clazz selected; clazz "attributeScore"; style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" width color); onMouseMove (fun _ -> Highlight (key, true)); onMouseLeave (fun _ -> Highlight (key, false))] []
                                                 )
                                    
                                             let stackBar = div [clazz "scoreWrapper"; clazz "innerScore"] manyDiffs
@@ -367,7 +393,39 @@ let view (model : MTable) =
                 )
         )
 
-        br []
+        Incremental.div (AttributeMap.ofList[]) <| (
+            alist {
+                let! visibleOrder = model.visibleOrder
+                let! headers = model.header
+                let! weights = model.weights
+                let! colors = model.colors
+
+                for name in visibleOrder do
+                    let attribute = headers |> Map.find name
+                    let width = 
+                        match attribute.kind with
+                            |Kind.Bar _ -> match weights |> Map.tryFind name with
+                                            | Some (Some w) -> w * 100.0
+                                            | _ -> 0.0
+                            | _ -> 0.0
+                    let (background, fontColor) =
+                        match colors |> Map.tryFind name with
+                            | Some c -> 
+                                let textCol = 
+                                    match c.A with
+                                        | 0uy -> C3b.Black
+                                        | _ -> C3b.White
+                                (c.ToC3b(), textCol)
+                            | None -> (C3b.Black, C3b.White)
+                    match width with
+                        | 0.0 -> ()
+                        | _ ->
+                        //todo make incremental
+                            yield div [style (sprintf "height: 30px; width: %.2f%%; background: %s; color: %s; float: left" width (colorToHex background) (colorToHex fontColor))] [text name]
+                            yield div [clazz "dragableWeights"; style "height: 30px; width: 2px; float: left; color: red"; onMouseMove (fun _ -> Highlight (name, true)); onMouseLeave (fun _ -> Highlight (name, false))][] //todo how to get hovered element?
+            }
+        )
+
         Incremental.div (AttributeMap.ofList[clazz "attributesDiv"]) <| (
             alist {
                 let! visibleAttributes = model.visibleOrder
@@ -376,7 +434,6 @@ let view (model : MTable) =
             }
         )
 
-        br []
         Incremental.div (AttributeMap.ofList[clazz "attributesDiv"]) <| (
             alist {
                 let! header = model.header
@@ -389,12 +446,12 @@ let view (model : MTable) =
                         | true -> ()
                 }
         )
+        
+        div [clazz "attributesDiv"] [
+            button [onClick (fun _ -> NormalizeWeight)] [text "normalize Weights"]
+            button [onClick (fun _ -> ToggleOptions)] [text "additional Options"]
+        ]
 
-        br []
-        button [onClick (fun _ -> NormalizeWeight)] [text "normalize Weights"]
-
-        br[]
-        button [onClick (fun _ -> ToggleOptions)] [text "additional Options"]
     ]
 
 let threads (model : Table) = 
