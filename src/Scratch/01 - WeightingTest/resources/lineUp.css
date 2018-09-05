@@ -1,12 +1,16 @@
+body {
+	font-family: Roboto;
+}
+
 table {
 	overflow-x: auto;
 	display: block;
-	font-family: Roboto;
 	border-collapse:collapse;
 }
 
 th {
 	padding: auto 10px;
+	text-transform: uppercase;
 }
 
 th, td {
@@ -22,6 +26,7 @@ table tbody {
    overflow-y: auto;
    overflow-x: hidden;
    display: block;
+   font-size: 75%;
 }
 
 .leftHeader {
@@ -46,6 +51,7 @@ tr:hover {background-color: #f5f5f5;}
   	border-radius: 5px;
   	background-color: #dee6ed;
 	position: relative;
+	border: 1px solid transparent;
 }
 
 .inner {
@@ -115,7 +121,24 @@ p .alignleft {
 	border: 2px solid red;
 }
 
+.selectable {
+	border: 1px solid transparent;
+}
 .selected {
 	box-shadow: 0 0 5px rgba(195, 224, 253, 1);
 	border: 1px solid rgba(195, 224, 253, 1);
+}
+
+.container {
+	margin-top: 10px;
+}
+
+
+.main{
+  position:absolute;
+  padding:10px;
+}
+.main > div{
+  float:right;
+  margin: 1px;
 }

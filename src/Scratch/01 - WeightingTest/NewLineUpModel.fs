@@ -54,6 +54,7 @@ type Table =
         visibleOrder : List<string>
         showOptions: bool
         colors : Map<string, C4b>
+        dragedAttribute: Option<string>
     }
 
 module Parsing =
@@ -169,10 +170,10 @@ module Parsing =
                 header = Map.map computeStatistics h   
                 rows = rows
                 weights = 
-                    h |> Map.map (fun key _ -> 
-                                       match key with
-                                       | "Score" -> None
-                                       | _ -> Some (1.0 / float (visibleOrd.Length-1)) )
+                    h |> Map.map (fun key a -> 
+                                       match a.kind with
+                                       | Bar _ -> Some (1.0 / float (visibleOrd.Length-2)) //todo leave out non bar elements
+                                       | _ -> None)
                 visibleOrder = visibleOrd
                 showOptions = true
                 colors =
@@ -195,7 +196,7 @@ module Parsing =
                     seqH 
                         |> Seq.map (fun (i,h) -> ((fst h), colors.[i % colors.Length]))
                         |> Map.ofSeq
-                        
+                dragedAttribute = None                        
             }
         else 
             failwith "not enough lines"

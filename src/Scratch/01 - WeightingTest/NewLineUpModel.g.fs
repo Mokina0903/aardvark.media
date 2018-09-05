@@ -19,6 +19,7 @@ module Mutable =
         let _visibleOrder = ResetMod.Create(__initial.visibleOrder)
         let _showOptions = ResetMod.Create(__initial.showOptions)
         let _colors = ResetMod.Create(__initial.colors)
+        let _dragedAttribute = MOption.Create(__initial.dragedAttribute)
         
         member x.header = _header :> IMod<_>
         member x.weights = _weights :> IMod<_>
@@ -26,6 +27,7 @@ module Mutable =
         member x.visibleOrder = _visibleOrder :> IMod<_>
         member x.showOptions = _showOptions :> IMod<_>
         member x.colors = _colors :> IMod<_>
+        member x.dragedAttribute = _dragedAttribute :> IMod<_>
         
         member x.Current = __current :> IMod<_>
         member x.Update(v : NewLineUpModel.Table) =
@@ -38,6 +40,7 @@ module Mutable =
                 ResetMod.Update(_visibleOrder,v.visibleOrder)
                 ResetMod.Update(_showOptions,v.showOptions)
                 ResetMod.Update(_colors,v.colors)
+                MOption.Update(_dragedAttribute, v.dragedAttribute)
                 
         
         static member Create(__initial : NewLineUpModel.Table) : MTable = MTable(__initial)
@@ -89,4 +92,10 @@ module Mutable =
                     override x.Get(r) = r.colors
                     override x.Set(r,v) = { r with colors = v }
                     override x.Update(r,f) = { r with colors = f r.colors }
+                }
+            let dragedAttribute =
+                { new Lens<NewLineUpModel.Table, Microsoft.FSharp.Core.Option<System.String>>() with
+                    override x.Get(r) = r.dragedAttribute
+                    override x.Set(r,v) = { r with dragedAttribute = v }
+                    override x.Update(r,f) = { r with dragedAttribute = f r.dragedAttribute }
                 }
