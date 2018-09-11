@@ -254,32 +254,51 @@ let view (model : MTable) =
                         let! colors = model.colors
 
                         yield thead [] [    
-                            yield tr [] [
+                            yield tr [] [                              
                                 let binSize = 5
                                 for visibleName in visibleOrder do
-                                    let attribute = headers |> Map.find visibleName
-                                    let min = attribute.stats.min
-                                    let max = attribute.stats.max
-                                    let boundSize = (max - min) / float binSize
-                                    //let bounds = [|min .. boundSize .. max|]
-                                 
-                                    let p (row : Row) : float =
-                                        let m = Map.find visibleName row.values
-                                        Value.toFloat m
+                                    let attr = headers |> Map.find visibleName 
+                                    match attr.kind with
+                                    | Bar _ ->
+                                        let attribute = headers |> Map.find visibleName
+                                        let min = attribute.stats.min
+                                        let max = attribute.stats.max
+                                        let boundSize = (max - min) / float (binSize-1)
+                                        let bounds =
+                                            match boundSize = 0.0 with
+                                            | true -> Array.create (binSize - 1) 0.0
+                                            | false -> [|min .. boundSize .. max|]
+                                        let p (row : Row) : float =
+                                            let m = Map.find visibleName row.values
+                                            Value.toFloat m
 
-                                    let values = Array.map p rows
-                                    let firstHalf = values |> Array.filter (fun x -> x > (min + (max-min)/2.0)) |> Array.length
-                                    let secondHalf = values.Length - firstHalf
+                                        let values = Array.map p rows
 
-                                    match attribute.kind with
-                                        | Bar _ -> 
-                                            yield th [] [
-                                                div [style "width: 100%; height: 100%; clear: none; "] [
-                                                    div [style (sprintf "width: 40%%; height: %ipx; background: blue; float: left" firstHalf)] []
-                                                    div [style (sprintf "width: 40%%; height: %ipx; background: red; float: left" secondHalf)] []
+                                        let heights : int[] =     
+                                            bounds |> Array.indexed |> Array.map (fun (i, b) ->
+                                                match i with
+                                                | 0 -> values |> Array.filter (fun x -> x <= bounds.[i]) |> Array.length
+                                                | _ -> values |> Array.filter (fun x -> x > bounds.[i-1] && x <= bounds.[i]) |> Array.length                                          
+                                            )                                                                                     
+                                    
+                                        let (background, fontColor) =
+                                                    match colors |> Map.tryFind visibleName with
+                                                        | Some c -> 
+                                                            let textCol = 
+                                                                match c.A with
+                                                                    | 0uy -> C3b.Black
+                                                                    | _ -> C3b.White
+                                                            (c.ToC3b(), textCol)
+                                                        | None -> (C3b.Black, C3b.White)
+
+                                        yield th [] [
+                                            div [clazz "histoContainer"][
+                                                for h in heights do
+                                                    yield div [style (sprintf "width: %i%%; height: %ipx; background: %s" ((100/binSize)-1) ((50/Array.max heights*h)) (colorToHex background))] []
                                                 ]
-                                            ]
-                                        | _ -> ()
+                                        ]
+                                    | _ -> yield th [] []
+           
                             ]
 
                             yield tr [] [
@@ -360,7 +379,8 @@ let view (model : MTable) =
                                                                             | Bar Max -> "Max"
                                                                             | Bar Min -> "Min"
                                                                             | _ -> ""
-                                                                    )]
+                                                                        )
+                                                                    ]
                                                         ]
                                             ]                                                                            
                             ]

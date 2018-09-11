@@ -6,6 +6,7 @@ table {
 	overflow-x: auto;
 	display: block;
 	border-collapse:collapse;
+	table-layout: fixed;
 }
 
 th {
@@ -16,9 +17,14 @@ th {
 th, td {
 	min-width: 150px;
 	max-width: 150px;
+	min-height: 40px;
 	padding: 5px;
     text-align: left;
     border-bottom: 1px solid #ddd;
+}
+
+tr {
+	width: 100%;
 }
 
 table tbody {
@@ -135,10 +141,19 @@ p .alignleft {
 
 
 .main{
-  position:absolute;
-  padding:10px;
+	position:absolute;
+	padding:10px;
 }
 .main > div{
-  float:right;
-  margin: 1px;
+	float:right;
+	margin: 1px;
+}
+
+.histocontainer {
+	height: 50px; 
+	display: flex; 
+	align-items: flex-end;
+	justify-content: space-around; 
+	flex-direction: row; 
+	flex-wrap: wrap;
 }
