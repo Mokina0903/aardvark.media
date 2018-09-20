@@ -14,7 +14,7 @@ module Mutable =
         inherit obj()
         let mutable __current : Aardvark.Base.Incremental.IModRef<NewLineUpModel.Table> = Aardvark.Base.Incremental.EqModRef<NewLineUpModel.Table>(__initial) :> Aardvark.Base.Incremental.IModRef<NewLineUpModel.Table>
         let _header = ResetMod.Create(__initial.header)
-        let _weights = ResetMod.Create(__initial.weights)
+        let _weights = MMap.Create(__initial.weights, (fun v -> MOption.Create(v)), (fun (m,v) -> MOption.Update(m, v)), (fun v -> v :> IMod<_>))
         let _rows = ResetMod.Create(__initial.rows)
         let _visibleOrder = ResetMod.Create(__initial.visibleOrder)
         let _showOptions = ResetMod.Create(__initial.showOptions)
@@ -22,7 +22,7 @@ module Mutable =
         let _dragedAttribute = MOption.Create(__initial.dragedAttribute)
         
         member x.header = _header :> IMod<_>
-        member x.weights = _weights :> IMod<_>
+        member x.weights = _weights :> amap<_,_>
         member x.rows = _rows :> IMod<_>
         member x.visibleOrder = _visibleOrder :> IMod<_>
         member x.showOptions = _showOptions :> IMod<_>
@@ -35,7 +35,7 @@ module Mutable =
                 __current.Value <- v
                 
                 ResetMod.Update(_header,v.header)
-                ResetMod.Update(_weights,v.weights)
+                MMap.Update(_weights, v.weights)
                 ResetMod.Update(_rows,v.rows)
                 ResetMod.Update(_visibleOrder,v.visibleOrder)
                 ResetMod.Update(_showOptions,v.showOptions)
@@ -64,7 +64,7 @@ module Mutable =
                     override x.Update(r,f) = { r with header = f r.header }
                 }
             let weights =
-                { new Lens<NewLineUpModel.Table, Microsoft.FSharp.Collections.Map<System.String,Microsoft.FSharp.Core.Option<System.Double>>>() with
+                { new Lens<NewLineUpModel.Table, Aardvark.Base.hmap<System.String,Microsoft.FSharp.Core.Option<System.Double>>>() with
                     override x.Get(r) = r.weights
                     override x.Set(r,v) = { r with weights = v }
                     override x.Update(r,f) = { r with weights = f r.weights }

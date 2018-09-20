@@ -15,6 +15,19 @@ open Aardvark.Base.MultimethodTest
 open System.Linq.Expressions
 open Aardvark.Base.Incremental
 
+
+let findOption (k : 'k)  (m : amap<'k,IMod<Option<'v>>>) : IMod<Option<'v>> =
+    adaptive {
+        let! v = AMap.tryFind k m
+        match v with
+            | Some v -> 
+                let! v = v
+                match v with
+                    | None -> return None
+                    | Some v -> return Some v
+            | None -> return None
+    }
+
 type Message =
     | Nop
     | SetTargetMode of (string * Kind)
@@ -40,7 +53,7 @@ let CalculateScore model =
                     |> List.map (fun (k, v) ->
                         match model.visibleOrder |> List.contains k with
                             | true -> 
-                                match model.weights |> Map.tryFind k with
+                                match model.weights |> HMap.tryFind k with
                                     | Some (Some w) -> // w * (Value.toFloat v)
                                         let attr = model.header |> Map.find k //todo tryFind
                                         let stats = attr.stats
@@ -60,16 +73,17 @@ let CalculateScore model =
     { model with rows = updatedRows}
 
 
-let rec sumTill (weights : Map<'a, Option<float>>) (xs : list<'a>) (c : 'a) = 
+let rec sumTill (weights : hmap<'a, Option<float>>) (xs : list<'a>) (c : 'a) = 
     match xs with
         | [] -> 0.0
-        | x::xs ->  if x = c then 0.0
-                    else 
-                        match weights |> Map.tryFind x with
-                        | Some (Some a) -> 
-                            printfn "weight ... %f" a
-                            a + sumTill weights xs c
-                        | _ -> sumTill weights xs c
+        | x::xs ->  
+            if x = c then 0.0
+            else 
+                match weights |> HMap.tryFind x with
+                | Some (Some a) -> 
+                    printfn "weight ... %f" a
+                    a + sumTill weights xs c
+                | _ -> sumTill weights xs c
                             
                 
 
@@ -111,7 +125,7 @@ let update (model : Table) (msg : Message) =
                 | None -> model
 
         | SetWeight (name, value) ->
-            let newWeights = model.weights |> Map.add name (Some value) 
+            let newWeights = model.weights |> HMap.add name (Some value) 
             CalculateScore {model with weights = newWeights}
                  
         | AddAttribute key -> 
@@ -189,7 +203,7 @@ let update (model : Table) (msg : Message) =
                         match key with
                         | "Score" -> None
                         | _ -> Some (1.0 / float (model.visibleOrder.Length-2)) ) //-2 weil Score + model in visibleOrder includiert
-            CalculateScore { model with weights = weights}
+            CalculateScore { model with weights = HMap.ofMap weights}
             
         | ToggleOptions ->
             { model with showOptions = 
@@ -218,7 +232,7 @@ let update (model : Table) (msg : Message) =
                             let prevWeight = sumTill weights model.visibleOrder a
                             printfn "dragging %s" a
                             printfn "by %f - %f" coord.X  prevWeight
-                            let newWeights = model.weights |> Map.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0)) 
+                            let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0)) 
                             {model with weights = newWeights}
                             //let newWeights = 
                             //    weights |> Map.map (fun key w -> 
@@ -240,49 +254,181 @@ let dependencies =
 
 let view (model : MTable) =
 
-    body [onMouseUp (fun _ _ -> StopDrag); onMouseMoveRel MouseMove] [     
+    require dependencies (
+        body [onMouseUp (fun _ _ -> StopDrag); onMouseMoveRel MouseMove] [     
          
-        require dependencies (
-            onBoot "init('__ID__')" (
-                Incremental.table (AttributeMap.ofList [clazz "mainTable"; "border" => "0"; "cellspacing" => "0"; style "border-collapse:collapse;"]) <|
-                    alist {
-                        let! headers = model.header
-                        let! visibleOrder = model.visibleOrder
-                        let! rows = model.rows
-                        let! weights = model.weights
-                        let! showOptions = model.showOptions
-                        let! colors = model.colors
+            require dependencies (
+                onBoot "init('__ID__')" (
+                    Incremental.table (AttributeMap.ofList [clazz "mainTable"; "border" => "0"; "cellspacing" => "0"; style "border-collapse:collapse;"]) <|
+                        alist {
+                            let! headers = model.header
+                            let! visibleOrder = model.visibleOrder
+                            let! rows = model.rows
+                            //let! weights = model.weights
+                            let! showOptions = model.showOptions
+                            let! colors = model.colors
 
-                        yield thead [] [    
-                            yield tr [] [                              
-                                let binSize = 5
-                                for visibleName in visibleOrder do
-                                    let attr = headers |> Map.find visibleName 
-                                    match attr.kind with
-                                    | Bar _ ->
-                                        let attribute = headers |> Map.find visibleName
-                                        let min = attribute.stats.min
-                                        let max = attribute.stats.max
-                                        let boundSize = (max - min) / float (binSize-1)
-                                        let bounds =
-                                            match boundSize = 0.0 with
-                                            | true -> Array.create (binSize - 1) 0.0
-                                            | false -> [|min .. boundSize .. max|]
-                                        let p (row : Row) : float =
-                                            let m = Map.find visibleName row.values
-                                            Value.toFloat m
+                            yield thead [] [    
+                                yield tr [] [                              
+                                    let binSize = 5
+                                    for visibleName in visibleOrder do
+                                        let attr = headers |> Map.find visibleName 
+                                        match attr.kind with
+                                        | Bar _ ->
+                                            let attribute = headers |> Map.find visibleName
+                                            let min = attribute.stats.min
+                                            let max = attribute.stats.max
+                                            let boundSize = (max - min) / float (binSize-1)
+                                            let bounds =
+                                                match boundSize = 0.0 with
+                                                | true -> Array.create (binSize - 1) 0.0
+                                                | false -> [|min .. boundSize .. max|]
+                                            let p (row : Row) : float =
+                                                let m = Map.find visibleName row.values
+                                                Value.toFloat m
 
-                                        let values = Array.map p rows
+                                            let values = Array.map p rows
 
-                                        let heights : int[] =     
-                                            bounds |> Array.indexed |> Array.map (fun (i, b) ->
-                                                match i with
-                                                | 0 -> values |> Array.filter (fun x -> x <= bounds.[i]) |> Array.length
-                                                | _ -> values |> Array.filter (fun x -> x > bounds.[i-1] && x <= bounds.[i]) |> Array.length                                          
-                                            )                                                                                     
+                                            let heights : int[] =     
+                                                bounds |> Array.indexed |> Array.map (fun (i, b) ->
+                                                    match i with
+                                                    | 0 -> values |> Array.filter (fun x -> x <= bounds.[i]) |> Array.length
+                                                    | _ -> values |> Array.filter (fun x -> x > bounds.[i-1] && x <= bounds.[i]) |> Array.length                                          
+                                                )                                                                                     
                                     
+                                            let (background, fontColor) =
+                                                        match colors |> Map.tryFind visibleName with
+                                                            | Some c -> 
+                                                                let textCol = 
+                                                                    match c.A with
+                                                                        | 0uy -> C3b.Black
+                                                                        | _ -> C3b.White
+                                                                (c.ToC3b(), textCol)
+                                                            | None -> (C3b.Black, C3b.White)
+
+                                            yield th [] [
+                                                div [clazz "histoContainer"][
+                                                    for h in heights do
+                                                        yield div [style (sprintf "width: %i%%; height: %ipx; background: %s" ((100/binSize)-1) ((50/Array.max heights*h)) (colorToHex background))] []
+                                                    ]
+                                            ]
+                                        | _ -> yield th [] []
+           
+                                ]
+
+                                yield tr [] [
+                                    for visibleName in visibleOrder do
+                                        let attr = headers |> Map.find visibleName
+
+                                        let iconClass =
+                                            match attr.sortState with
+                                                | Asc -> "angle up icon"
+                                                | Desc ->"angle down icon"
+                                                | Inactive -> ""
+
                                         let (background, fontColor) =
-                                                    match colors |> Map.tryFind visibleName with
+                                            match colors |> Map.tryFind visibleName with
+                                                | Some c -> 
+                                                    let textCol = 
+                                                        match c.A with
+                                                            | 0uy -> C3b.Black
+                                                            | _ -> C3b.White
+                                                    (c.ToC3b(), textCol)
+                                                | None -> (C3b.Black, C3b.White)
+
+                                        let selected =
+                                            match attr.selected with
+                                            | true -> "selected"
+                                            | _ -> "selectable"
+                                                        
+                                        yield th [clazz selected; onClick (fun _ -> Sort visibleName); style ("background: " + (colorToHex background) + "; color: " + (colorToHex fontColor)); onMouseMove (fun _ -> Highlight (visibleName, true)); onMouseLeave (fun _ -> Highlight (visibleName, false))] [
+                                            text attr.name;
+                                            div[clazz "sortingSymbol"] [
+                                                i [clazz iconClass][]
+                                                ]
+                                        ]
+                                    ]
+
+                                match showOptions with
+                                    | false -> ()
+                                    | true -> 
+                                            yield tr [] [
+                                                for visibleName in visibleOrder do
+                                                    let attr = headers |> Map.find visibleName  
+                                
+                                                    let newTarget =
+                                                                    match attr.kind with
+                                                                    | Bar Max-> Bar Min
+                                                                    | Bar Min -> Bar Max
+                                                                    | _ -> attr.kind
+                                
+                                                    let targetButtonClass =
+                                                        match attr.kind with
+                                                            | Bar Max -> "ui olive basic mini button"
+                                                            | Bar Min -> "ui orange basic mini button"
+                                                            | _ -> ""
+                                      
+                                                    match attr.kind with
+                                                        | Plain | Score -> yield th [][text ""]
+                                                        | _ ->
+                                                            yield th [] [                                           
+                                                                div[clazz "ui input"] [
+
+                                                                    let onChangeWeight (s : string) = 
+                                                                        let num = System.Double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture)
+                                                                        let value = 
+                                                                            match num with
+                                                                                | (true, v) -> v
+                                                                                | (false, _) -> 0.0
+                                                                        SetWeight (visibleName, value)
+
+                                                                    let attribs = 
+                                                                        amap {
+                                                                            yield clazz "weightInput"; 
+                                                                            yield "type" => "number"; 
+                                                                            yield onChange onChangeWeight;
+                                                                            let! currentWeight = findOption visibleName model.weights
+                                                                            match currentWeight with
+                                                                                | None -> yield "value" => "0.0"
+                                                                                | Some s -> yield "value" => sprintf "%.2f" s
+                                                                        } |> AttributeMap.ofAMap
+                                                                    yield Incremental.input attribs        
+                                                                ]
+                                                                                                      
+                                                                button [clazz targetButtonClass; clazz "targetButtons"
+                                                                        onClick( fun _ -> SetTargetMode (visibleName, newTarget))
+                                                                        ] [text (match attr.kind with
+                                                                                | Bar Max -> "Max"
+                                                                                | Bar Min -> "Min"
+                                                                                | _ -> ""
+                                                                            )
+                                                                        ]
+                                                            ]
+                                                ]                                                                            
+                                ]
+
+                            yield tbody [clazz "mainTBody"] [
+                                for (row, index) in Seq.zip rows [0..rows.Length-1] do                   
+                                    let columns = visibleOrder |> List.map (fun x -> 
+                                        let value = row.values |> Map.find x
+                                        let attribute = headers |> Map.find x 
+                                        match attribute.kind with
+                                            | Kind.Plain -> match value with
+                                                            | String s -> td [] [text s]
+                                                            | Float f -> td [] [text (sprintf "%.2f" f)]
+                                                            | Int i -> td []  [text (sprintf "%d" i)]
+                                                            | Missing -> td [] [text ""]
+                                            | Kind.Bar target -> 
+                                                let stats = attribute.stats
+                                                let v = value |>  Value.toFloat 
+
+                                                let percentage = 
+                                                    match target with
+                                                        | Max -> ((v - stats.min) * 100.0 / (stats.max - stats.min))
+                                                        | Min -> 100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min))
+                                             
+                                                let (background, fontColor) =
+                                                    match colors |> Map.tryFind x with
                                                         | Some c -> 
                                                             let textCol = 
                                                                 match c.A with
@@ -290,278 +436,171 @@ let view (model : MTable) =
                                                                     | _ -> C3b.White
                                                             (c.ToC3b(), textCol)
                                                         | None -> (C3b.Black, C3b.White)
-
-                                        yield th [] [
-                                            div [clazz "histoContainer"][
-                                                for h in heights do
-                                                    yield div [style (sprintf "width: %i%%; height: %ipx; background: %s" ((100/binSize)-1) ((50/Array.max heights*h)) (colorToHex background))] []
-                                                ]
-                                        ]
-                                    | _ -> yield th [] []
-           
-                            ]
-
-                            yield tr [] [
-                                for visibleName in visibleOrder do
-                                    let attr = headers |> Map.find visibleName
-
-                                    let iconClass =
-                                        match attr.sortState with
-                                            | Asc -> "angle up icon"
-                                            | Desc ->"angle down icon"
-                                            | Inactive -> ""
-
-                                    let (background, fontColor) =
-                                        match colors |> Map.tryFind visibleName with
-                                            | Some c -> 
-                                                let textCol = 
-                                                    match c.A with
-                                                        | 0uy -> C3b.Black
-                                                        | _ -> C3b.White
-                                                (c.ToC3b(), textCol)
-                                            | None -> (C3b.Black, C3b.White)
-
-                                    let selected =
-                                        match attr.selected with
-                                        | true -> "selected"
-                                        | _ -> "selectable"
-                                                        
-                                    yield th [clazz selected; onClick (fun _ -> Sort visibleName); style ("background: " + (colorToHex background) + "; color: " + (colorToHex fontColor)); onMouseMove (fun _ -> Highlight (visibleName, true)); onMouseLeave (fun _ -> Highlight (visibleName, false))] [
-                                        text attr.name;
-                                        div[clazz "sortingSymbol"] [
-                                            i [clazz iconClass][]
-                                            ]
-                                    ]
-                                ]
-
-                            match showOptions with
-                                | false -> ()
-                                | true -> 
-                                        yield tr [] [
-                                            for visibleName in visibleOrder do
-                                                let attr = headers |> Map.find visibleName  
-                                
-                                                let newTarget =
-                                                                match attr.kind with
-                                                                | Bar Max-> Bar Min
-                                                                | Bar Min -> Bar Max
-                                                                | _ -> attr.kind
-                                
-                                                let targetButtonClass =
-                                                    match attr.kind with
-                                                        | Bar Max -> "ui olive basic mini button"
-                                                        | Bar Min -> "ui orange basic mini button"
-                                                        | _ -> ""
-                                      
-                                                match attr.kind with
-                                                    | Plain | Score -> yield th [][text ""]
-                                                    | _ ->
-                                                        yield th [] [                                           
-                                                            div[clazz "ui input"] [
-                                                                input [clazz "weightInput"; "type" => "number"; onChange (fun s ->                                       
-                                                                    let num = System.Double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture)
-                                                                    let value = 
-                                                                        match num with
-                                                                            | (true, v) -> v
-                                                                            | (false, _) -> 0.0
-                                                                    SetWeight (visibleName, value)
-                                                                    );
-                                                                    "value" =>
-                                                                        match weights |> Map.tryFind visibleName with
-                                                                            | Some (Some v) -> sprintf "%.2f" v                                                                       
-                                                                            |  _ -> "0.0"                                 
-                                                                    ]         
-                                                            ]
-                                                                                                      
-                                                            button [clazz targetButtonClass; clazz "targetButtons"
-                                                                    onClick( fun _ -> SetTargetMode (visibleName, newTarget))
-                                                                    ] [text (match attr.kind with
-                                                                            | Bar Max -> "Max"
-                                                                            | Bar Min -> "Min"
-                                                                            | _ -> ""
-                                                                        )
-                                                                    ]
-                                                        ]
-                                            ]                                                                            
-                            ]
-
-                        yield tbody [clazz "mainTBody"] [
-                            for (row, index) in Seq.zip rows [0..rows.Length-1] do                   
-                                let columns = visibleOrder |> List.map (fun x -> 
-                                    let value = row.values |> Map.find x
-                                    let attribute = headers |> Map.find x 
-                                    match attribute.kind with
-                                        | Kind.Plain -> match value with
-                                                        | String s -> td [] [text s]
-                                                        | Float f -> td [] [text (sprintf "%.2f" f)]
-                                                        | Int i -> td []  [text (sprintf "%d" i)]
-                                                        | Missing -> td [] [text ""]
-                                        | Kind.Bar target -> 
-                                            let stats = attribute.stats
-                                            let v = value |>  Value.toFloat 
-
-                                            let percentage = 
-                                                match target with
-                                                    | Max -> ((v - stats.min) * 100.0 / (stats.max - stats.min))
-                                                    | Min -> 100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min))
-                                             
-                                            let (background, fontColor) =
-                                                match colors |> Map.tryFind x with
-                                                    | Some c -> 
-                                                        let textCol = 
-                                                            match c.A with
-                                                                | 0uy -> C3b.Black
-                                                                | _ -> C3b.White
-                                                        (c.ToC3b(), textCol)
-                                                    | None -> (C3b.Black, C3b.White)
                                             
-                                            let selected =
-                                                match attribute.selected with
-                                                | true -> "selected"
-                                                | _ -> "selectable"
+                                                let selected =
+                                                    match attribute.selected with
+                                                    | true -> "selected"
+                                                    | _ -> "selectable"
 
-                                            td [] [
-                                                div [clazz selected; clazz "outer"] [                                                        
-                                                    div [clazz "inner"; style (sprintf "width: %.2f%%; background: %s; color: %s" percentage (colorToHex background) (colorToHex fontColor))] []
-                                                    p [] [
-                                                        span [clazz "alignLeft"][text (sprintf "%.2f%%" percentage)]
-                                                        span [clazz "alignRight"][text (sprintf "%.2f" v)]
+                                                td [] [
+                                                    div [clazz selected; clazz "outer"] [                                                        
+                                                        div [clazz "inner"; style (sprintf "width: %.2f%%; background: %s; color: %s" percentage (colorToHex background) (colorToHex fontColor))] []
+                                                        p [] [
+                                                            span [clazz "alignLeft"][text (sprintf "%.2f%%" percentage)]
+                                                            span [clazz "alignRight"][text (sprintf "%.2f" v)]
+                                                        ]
                                                     ]
                                                 ]
-                                            ]
 
-                                         | Kind.Score -> 
-                                            let scoreSum =
-                                                match value with                                                       
-                                                            | Float f -> (sprintf "%.2f%%" f)
-                                                            | _ -> ""
+                                             | Kind.Score -> 
+                                                let scoreSum =
+                                                    match value with                                                       
+                                                                | Float f -> (sprintf "%.2f%%" f)
+                                                                | _ -> ""
                                             
-                                            let manyDiffs : list<DomNode<_>> = 
-                                                visibleOrder |> List.map (fun key -> 
-                                                    let value = row.values |> Map.find key
-                                                    let attribute = headers |> Map.find key
-                                                    let w = 
-                                                        match weights |> Map.tryFind key with
-                                                            | Some (Some w) -> w
-                                                            | _ -> 0.0
-                                                    let width = 
-                                                        match attribute.kind with
-                                                            |Kind.Bar target -> 
-                                                                let stats = attribute.stats
-                                                                let v = value |>  Value.toFloat 
+                                                let manyDiffs : list<DomNode<_>> = 
+                                                    visibleOrder |> List.map (fun key -> 
+                                                        let value = row.values |> Map.find key
+                                                        let attribute = headers |> Map.find key
+                                                        let w = 
+                                                            adaptive {
+                                                                let! w = findOption key model.weights
+                                                                match w with
+                                                                    | Some w -> return w
+                                                                    | None -> return 0.0
 
-                                                                match target with
-                                                                    | Max -> w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
-                                                                    | Min ->  w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
-                                                                | _ -> 0.0
-                                                    let color = 
-                                                        match colors |> Map.tryFind key with
-                                                            | Some c -> colorToHex (c.ToC3b())
-                                                            | _ -> colorToHex C3b.Black
+                                                            }
+                                                        let width = 
+                                                            adaptive {
+                                                                let! w = w
+                                                                match attribute.kind with
+                                                                    |Kind.Bar target -> 
+                                                                        let stats = attribute.stats
+                                                                        let v = value |>  Value.toFloat 
+
+                                                                        match target with
+                                                                            | Max -> return w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
+                                                                            | Min ->  return w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
+                                                                        | _ -> return 0.0
+                                                            }
+                                                        let color = 
+                                                            match colors |> Map.tryFind key with
+                                                                | Some c -> colorToHex (c.ToC3b())
+                                                                | _ -> colorToHex C3b.Black
                                                     
-                                                    let selected =
-                                                        match attribute.selected with
-                                                        | true -> "selected"
-                                                        | _ -> "selectable"
+                                                        let selected =
+                                                            match attribute.selected with
+                                                            | true -> "selected"
+                                                            | _ -> "selectable"
+
+                                                        let attributes =
+                                                            amap {
+                                                                yield clazz selected; yield onMouseMove (fun _ -> Highlight (key, true)); yield onMouseLeave (fun _ -> Highlight (key, false))
+                                                                let! w = width
+                                                                yield style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" w color);
+                                                            } |> AttributeMap.ofAMap
                                             
-                                                    div [clazz selected; style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" width color); onMouseMove (fun _ -> Highlight (key, true)); onMouseLeave (fun _ -> Highlight (key, false))] []
-                                                )
+                                                        Incremental.div attributes AList.empty
+                                                    )
                                    
-                                            let stackBar = div [clazz "scoreWrapper"; clazz "innerScore"] manyDiffs
-                                            div [clazz "outerScore"][
-                                                stackBar;
-                                                p [][
-                                                    span[clazz "alignRight"][text scoreSum]]] // stackedbar...
-                                        )
-                                yield tr [] (columns)
-                            ]
-                    }
-                )
-        )
+                                                let stackBar = div [clazz "scoreWrapper"; clazz "innerScore"] manyDiffs
+                                                div [clazz "outerScore"][
+                                                    stackBar;
+                                                    p [][
+                                                        span[clazz "alignRight"][text scoreSum]]] // stackedbar...
+                                            )
+                                    yield tr [] (columns)
+                                ]
+                        }
+                    )
+            )
 
 
-        Incremental.div (AttributeMap.ofList[clazz "container"; style "left: 10px; width: 100%%; height: 30px; position:relative"]) <| (
-            alist {
-                let! visibleOrder = model.visibleOrder
-                let! headers = model.header
-                let! weights = model.weights
-                let! colors = model.colors
+            Incremental.div (AttributeMap.ofList[clazz "container"; style "left: 10px; width: 100%%; height: 30px; position:relative"]) <| (
+                alist {
+                    let! visibleOrder = model.visibleOrder
+                    let! headers = model.header
+                    //let! weights = model.weights
+                    let! colors = model.colors
 
-                for name in visibleOrder do
-                    let attribute = headers |> Map.find name
-                    let width = 
-                        match attribute.kind with
-                            |Kind.Bar _ -> match weights |> Map.tryFind name with
-                                            | Some (Some w) -> w * 100.0
-                                            | _ -> 0.0
-                            | _ -> 0.0
-                    let (background, fontColor) =
-                        match colors |> Map.tryFind name with
-                            | Some c -> 
-                                let textCol = 
-                                    match c.A with
-                                        | 0uy -> C3b.Black
-                                        | _ -> C3b.White
-                                (c.ToC3b(), textCol)
-                            | None -> (C3b.Black, C3b.White)
-                    match width with
-                        | 0.0 -> ()
-                        | _ ->
+                    for name in visibleOrder do
+                        let attribute = headers |> Map.find name
+                        let! width =
+                            adaptive {
+                                let! w = findOption name model.weights
+                                match w with
+                                    | None -> return 0.0
+                                    | Some w -> return w * 100.0
+                            }
 
-                            let styleDragableScore =
-                                amap {                                   
-                                    let s = sprintf "font-size: 75%%; height: 30px; width: %.2f%%; background: %s; color: %s; float: left;" (width - 1.0) (colorToHex background) (colorToHex fontColor)
-                                    yield style s
-                                } |> AttributeMap.ofAMap
+                        let (background, fontColor) =
+                            match colors |> Map.tryFind name with
+                                | Some c -> 
+                                    let textCol = 
+                                        match c.A with
+                                            | 0uy -> C3b.Black
+                                            | _ -> C3b.White
+                                    (c.ToC3b(), textCol)
+                                | None -> (C3b.Black, C3b.White)
+                        match width with
+                            | 0.0 -> ()
+                            | _ ->
 
-                            let styleCursor =
-                                amap {                                    
-                                    let s = "height: 30px; width: 2px; float: left; color: red"
-                                    yield onMouseDown (fun _ _ -> Drag (name))
-                                    yield onMouseMoveRel (fun c -> MouseMove c)
-                                    yield clazz "dragableWeights"
-                                    yield style s
-                                } |> AttributeMap.ofAMap
+                                let styleDragableScore =
+                                    amap {                                   
+                                        let s = sprintf "font-size: 75%%; height: 30px; width: %.2f%%; background: %s; color: %s; float: left;" (width - 1.0) (colorToHex background) (colorToHex fontColor)
+                                        yield style s
+                                    } |> AttributeMap.ofAMap
+
+                                let styleCursor =
+                                    amap {                                    
+                                        let s = "height: 30px; width: 2px; float: left; color: red"
+                                        yield onMouseDown (fun _ _ -> Drag (name))
+                                        yield onMouseMoveRel (fun c -> MouseMove c)
+                                        yield clazz "dragableWeights"
+                                        yield style s
+                                    } |> AttributeMap.ofAMap
                            
-                            yield div [] [
-                                Incremental.div styleDragableScore <| (
-                                    alist {
-                                        yield text name
-                                    }
-                                )
-                                Incremental.div styleCursor AList.empty
-                            ]                        
-                }
-        )
+                                yield div [] [
+                                    Incremental.div styleDragableScore <| (
+                                        alist {
+                                            yield text name
+                                        }
+                                    )
+                                    Incremental.div styleCursor AList.empty
+                                ]                        
+                    }
+            )
 
-        Incremental.div (AttributeMap.ofList[clazz "attributesDiv"]) <| (
-            alist {
-                let! visibleAttributes = model.visibleOrder
-                for name in visibleAttributes do
-                    yield button [clazz "ui red mini button"; onClick (fun _ -> RemoveAttribute name)][text name]
-            }
-        )
-
-        Incremental.div (AttributeMap.ofList[clazz "attributesDiv"]) <| (
-            alist {
-                let! header = model.header
-                let! visible = model.visibleOrder
-                let list = header |> Map.toList |> List.map (fun (k,v) -> v.name)
-                for a in list do
-                    let isVisible = visible |> List.contains a
-                    match isVisible with
-                        | false -> yield button [clazz "ui green mini button"; onClick (fun _ -> AddAttribute a)][text a]
-                        | true -> ()
+            Incremental.div (AttributeMap.ofList[clazz "attributesDiv"]) <| (
+                alist {
+                    let! visibleAttributes = model.visibleOrder
+                    for name in visibleAttributes do
+                        yield button [clazz "ui red mini button"; onClick (fun _ -> RemoveAttribute name)][text name]
                 }
-        )
+            )
+
+            Incremental.div (AttributeMap.ofList[clazz "attributesDiv"]) <| (
+                alist {
+                    let! header = model.header
+                    let! visible = model.visibleOrder
+                    let list = header |> Map.toList |> List.map (fun (k,v) -> v.name)
+                    for a in list do
+                        let isVisible = visible |> List.contains a
+                        match isVisible with
+                            | false -> yield button [clazz "ui green mini button"; onClick (fun _ -> AddAttribute a)][text a]
+                            | true -> ()
+                    }
+            )
         
-        div [clazz "attributesDiv"] [
-            button [onClick (fun _ -> NormalizeWeight)] [text "normalize Weights"]
-            button [onClick (fun _ -> ToggleOptions)] [text "additional Options"]
+            div [clazz "attributesDiv"] [
+                button [onClick (fun _ -> NormalizeWeight)] [text "normalize Weights"]
+                button [onClick (fun _ -> ToggleOptions)] [text "additional Options"]
+            ]
+
+
         ]
-
-
-    ]
+    )
 
 let threads (model : Table) = 
     ThreadPool.empty

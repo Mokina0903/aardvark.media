@@ -49,7 +49,7 @@ type Row =
 type Table =
     {
         header : Map<string, Attribute>
-        weights : Map<string, Option<float>>
+        weights : hmap<string, Option<float>>
         rows : array<Row>
         visibleOrder : List<string>
         showOptions: bool
@@ -170,10 +170,13 @@ module Parsing =
                 header = Map.map computeStatistics h   
                 rows = rows
                 weights = 
-                    h |> Map.map (fun key a -> 
-                                       match a.kind with
-                                       | Bar _ -> Some (1.0 / float (visibleOrd.Length-2)) //todo leave out non bar elements
-                                       | _ -> None)
+                    h 
+                      |> Map.map (fun key a -> 
+                            match a.kind with
+                            | Bar _ -> Some (1.0 / float (visibleOrd.Length-2)) //todo leave out non bar elements
+                            | _ -> None
+                         ) 
+                      |> HMap.ofMap
                 visibleOrder = visibleOrd
                 showOptions = true
                 colors =
