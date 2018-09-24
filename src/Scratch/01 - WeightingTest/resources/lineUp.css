@@ -123,9 +123,6 @@ p .alignleft {
 	float: right;
 }
 
-.dragableWeights {
-	border: 2px solid red;
-}
 
 .selectable {
 	border: 1px solid transparent;
@@ -137,8 +134,32 @@ p .alignleft {
 
 .container {
 	margin-top: 10px;
+	left: 10px;
+	width: 100%;
+	height: 30px;
+	position:relative
 }
 
+.weightsDragCursor {
+	height: 30px;
+	width: 2px;
+	float: left;
+	border: 4px solid hsla(350,50%,50%,0.3);
+	position: absolute;
+	right: 0;
+	bottom: 0;
+    cursor: e-resize;
+	transition: border 0.5s;
+}
+
+.weightsDragCursor:hover { border: 4px solid hsla(350,50%,50%,0.9) }
+
+.draggableWeights {
+	font-size: 75%;
+	height: 30px;
+	float: left;
+	position: relative;
+}
 
 .main{
 	position:absolute;

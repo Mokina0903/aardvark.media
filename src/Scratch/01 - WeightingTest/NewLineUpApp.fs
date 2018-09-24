@@ -216,8 +216,7 @@ let update (model : Table) (msg : Message) =
             let attribute = model.dragedAttribute
             match attribute with
                 | None -> model
-                | Some a ->
-                    
+                | Some a ->                   
                     match header |> Map.tryFind a with
                         | None -> model
                         | Some currentAttr ->    
@@ -226,35 +225,33 @@ let update (model : Table) (msg : Message) =
                                 match weights |> HMap.tryFind a with
                                 | Some (Some w) -> w            
                                 | _ -> 0.0
-
-                            let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0))
-                            printfn "changed by %.10f, coordX = %.10f" (coord.X - (prevWeight + thisWeight)) coord.X
-                            let difference = ((prevWeight + thisWeight) - coord.X)
-                            let oldBudget = 1.0 - (prevWeight + thisWeight)
-                            let newBudget = 1.0 - coord.X
-                            let scale = (newBudget/oldBudget) |> max 0.0 
-
-                            let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
-                            //todo exception if not type bar!
-                            let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
-
-                            let afterElements = visibleBarAttributes.Length - (actualIndex + 1)
-                            let diffWeigths = difference / (float afterElements + 1.0)
-                            printfn "old: %.10f new %.10f" oldBudget newBudget
-                            let attributesToNormalize = snd (visibleBarAttributes |> List.splitAt (actualIndex+1)) |> List.map ( fun e -> e.name)
+                            match (thisWeight <= 0.0 && ((coord.X - (prevWeight + thisWeight)) <= 0.0)) with
+                                | true -> model
+                                | false ->
+                                    //printfn "this weight now: %.10f" (thisWeight)
+                                    let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0))
+                                    //printfn "changed by %.10f, coordX = %.10f" (coord.X - (prevWeight + thisWeight)) coord.X
                             
-                            let normalizedNewWeights = 
-                                newWeights |> HMap.map (fun k a -> 
-                                    match attributesToNormalize|> List.contains k with
-                                    | true -> match a with
-                                                | Some a ->
-                                                    printfn "attr: %s a: %.10f a*scale %.10f" k a (a * scale |> clamp 0.0 1.0)
-                                                    Some (a * scale |> clamp 0.0 1.0) 
-                                                | _ -> None
-                                    | false -> a
-                                )
-                           
-                            { model with weights = normalizedNewWeights }
+                                    let oldBudget = (1.0 - (prevWeight + thisWeight)) 
+                                    let newBudget = (1.0 - coord.X) |> clamp 0.0 1.0                    
+                                    let scale = (newBudget/oldBudget) |> max 0.0 
+                                    //todo exception if not type bar!
+                                    let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder                                  
+                                    let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
+
+                                    //printfn "old: %.10f new %.10f" oldBudget newBudget
+                                    let attributesToNormalize = snd (visibleBarAttributes |> List.splitAt (actualIndex+1)) |> List.map ( fun e -> e.name)                            
+                                    let normalizedNewWeights = 
+                                        newWeights |> HMap.map (fun k a -> 
+                                            match attributesToNormalize|> List.contains k with
+                                            | true -> match a with
+                                                        | Some a ->
+                                                            printfn "attr: %s a: %.10f a*scale %.10f" k a (a * scale |> clamp 0.0 1.0)
+                                                            Some (a * scale |> clamp 0.0 1.0) 
+                                                        | _ -> None
+                                            | false -> a
+                                        )                           
+                                    { model with weights = normalizedNewWeights }
 
                             
         | _ -> model
@@ -532,7 +529,7 @@ let view (model : MTable) =
             )
 
 
-            Incremental.div (AttributeMap.ofList[clazz "container"; style "left: 10px; width: 1200px; height: 30px; position:relative"]) <| (
+            Incremental.div (AttributeMap.ofList[clazz "container"]) <| (
                 alist {
                     let! visibleOrder = model.visibleOrder
                     let! headers = model.header
@@ -566,25 +563,16 @@ let view (model : MTable) =
 
                                 let styleDragableScore =
                                     amap {                                   
-                                        let s = sprintf "font-size: 75%%; height: 30px; width: %.2f%%; background: %s; color: %s; float: left; position: relative" (width) (colorToHex background) (colorToHex fontColor)
+                                        let s = sprintf " width: %.2f%%; background: %s; color: %s" (width) (colorToHex background) (colorToHex fontColor)
                                         yield style s
+                                        yield clazz "draggableWeights"
                                     } |> AttributeMap.ofAMap
 
                                 let styleCursor =
-                                    amap {                                    
-                                        let s = "height: 30px; width: 2px; float: left; color: red; position: absolute; right: 0; bottom: 0"
-                                        
-                                        let s1 = match dragedAttr  with
-                                                    | Some x -> style "cursor: w-resize"
-                                                    | None -> style "cursor: default"
-                                        
+                                    amap {                                                                                                                                                         
                                         yield onMouseDown (fun _ _ -> Drag (name))
                                         yield onMouseMoveRel (fun c -> MouseMove c)
-                                        //yield onMouseEnter ( fun _ -> style "cursor: w-resize"; )
-                                        //yield onMouseLeave ( fun _ -> style style1 )
-                                        yield clazz "dragableWeights"
-                                        yield style s
-                                        //yield s1
+                                        yield clazz "weightsDragCursor"
                                     } |> AttributeMap.ofAMap
                            
                                 yield div [] [
