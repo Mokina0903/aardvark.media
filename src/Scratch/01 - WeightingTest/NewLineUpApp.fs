@@ -228,13 +228,14 @@ let update (model : Table) (msg : Message) =
                                 | _ -> 0.0
 
                             let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0))
-                            printfn "changed by %.10f" (coord.X - (prevWeight + thisWeight))
+                            printfn "changed by %.10f, coordX = %.10f" (coord.X - (prevWeight + thisWeight)) coord.X
                             let difference = ((prevWeight + thisWeight) - coord.X)
                             let oldBudget = 1.0 - (prevWeight + thisWeight)
                             let newBudget = 1.0 - coord.X
-                            let scale = (newBudget/oldBudget) |> clamp 0.0 1.0
+                            let scale = (newBudget/oldBudget) |> max 0.0 
 
                             let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
+                            //todo exception if not type bar!
                             let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
 
                             let afterElements = visibleBarAttributes.Length - (actualIndex + 1)
@@ -531,12 +532,14 @@ let view (model : MTable) =
             )
 
 
-            Incremental.div (AttributeMap.ofList[clazz "container"; style "left: 10px; width: 95%; height: 30px; position:relative"]) <| (
+            Incremental.div (AttributeMap.ofList[clazz "container"; style "left: 10px; width: 1200px; height: 30px; position:relative"]) <| (
                 alist {
                     let! visibleOrder = model.visibleOrder
                     let! headers = model.header
                     //let! weights = model.weights
                     let! colors = model.colors
+
+                    let! dragedAttr = model.dragedAttribute
 
                     for name in visibleOrder do
                         let attribute = headers |> Map.find name
@@ -570,10 +573,18 @@ let view (model : MTable) =
                                 let styleCursor =
                                     amap {                                    
                                         let s = "height: 30px; width: 2px; float: left; color: red; position: absolute; right: 0; bottom: 0"
+                                        
+                                        let s1 = match dragedAttr  with
+                                                    | Some x -> style "cursor: w-resize"
+                                                    | None -> style "cursor: default"
+                                        
                                         yield onMouseDown (fun _ _ -> Drag (name))
                                         yield onMouseMoveRel (fun c -> MouseMove c)
+                                        //yield onMouseEnter ( fun _ -> style "cursor: w-resize"; )
+                                        //yield onMouseLeave ( fun _ -> style style1 )
                                         yield clazz "dragableWeights"
                                         yield style s
+                                        //yield s1
                                     } |> AttributeMap.ofAMap
                            
                                 yield div [] [
