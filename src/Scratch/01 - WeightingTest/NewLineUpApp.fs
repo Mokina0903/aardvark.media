@@ -81,12 +81,18 @@ let rec sumTill (weights : hmap<'a, Option<float>>) (xs : list<'a>) (c : 'a) =
             else 
                 match weights |> HMap.tryFind x with
                 | Some (Some a) -> 
-                    printfn "weight ... %f" a
                     a + sumTill weights xs c
                 | _ -> sumTill weights xs c
-                            
-                
 
+let getVisibleBarAttributes (header : Map<string,Attribute>) (visibleOrder : list<string>) =
+    visibleOrder |> List.choose (fun nameOfAttribute -> 
+        match Map.tryFind nameOfAttribute header with
+            | Some a -> 
+                match a.kind with
+                | Bar _ -> Some a
+                | _ -> None
+            | _ -> None
+    )         
 
 let colorToHex (color : C3b) = 
     let bytes = [| color.R; color.G; color.B |]
@@ -108,7 +114,6 @@ let onMouseMoveRel (cb : V2d -> 'msg) : Attribute<'msg> =
 let update (model : Table) (msg : Message) =
     match msg with
         | SetTargetMode (name, targetMode) ->
-            //printf ("%s" targetMode.ToString)
             let attr = 
                 match model.header |> Map.tryFind name with
                         | Some a ->
@@ -185,24 +190,11 @@ let update (model : Table) (msg : Message) =
                     { model with rows = sortedRows; header = newHeader }
 
         | NormalizeWeight -> 
-            //let lengthAccumulator acc ( x : Attribute ) = 
-            //    match x.kind with
-            //    | Bar _ -> acc + 1
-            //    | _ -> acc + 0              
-
-            
-            //let barAttributes = 
-            //    for v in model.visibleOrder do
-            //        match header |> Map.tryFind v with
-            //            | None -> ()
-            //            | Some a -> List.append a
-            //let count = List.fold lengthAccumulator 0 barAttributes
-
             let weights = 
                 model.header |> Map.map (fun key _ -> 
                         match key with
                         | "Score" -> None
-                        | _ -> Some (1.0 / float (model.visibleOrder.Length-2)) ) //-2 weil Score + model in visibleOrder includiert
+                        | _ -> Some (1.0 / float (getVisibleBarAttributes model.header model.visibleOrder).Length))
             CalculateScore { model with weights = HMap.ofMap weights}
             
         | ToggleOptions ->
@@ -230,16 +222,39 @@ let update (model : Table) (msg : Message) =
                         | None -> model
                         | Some currentAttr ->    
                             let prevWeight = sumTill weights model.visibleOrder a
-                            printfn "dragging %s" a
-                            printfn "by %f - %f" coord.X  prevWeight
-                            let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0)) 
-                            {model with weights = newWeights}
-                            //let newWeights = 
-                            //    weights |> Map.map (fun key w -> 
-                            //            match key = key with
-                            //            | false -> _
-                            //            | _ -> Some (coord.X |> clamp 0.0  1.0))
-                            //{ model with weights = newWeights }
+                            let thisWeight = 
+                                match weights |> HMap.tryFind a with
+                                | Some (Some w) -> w            
+                                | _ -> 0.0
+
+                            let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0))
+                            printfn "changed by %.10f" (coord.X - (prevWeight + thisWeight))
+                            let difference = ((prevWeight + thisWeight) - coord.X)
+                            let oldBudget = 1.0 - (prevWeight + thisWeight)
+                            let newBudget = 1.0 - coord.X
+                            let scale = (newBudget/oldBudget) |> clamp 0.0 1.0
+
+                            let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
+                            let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
+
+                            let afterElements = visibleBarAttributes.Length - (actualIndex + 1)
+                            let diffWeigths = difference / (float afterElements + 1.0)
+                            printfn "old: %.10f new %.10f" oldBudget newBudget
+                            let attributesToNormalize = snd (visibleBarAttributes |> List.splitAt (actualIndex+1)) |> List.map ( fun e -> e.name)
+                            
+                            let normalizedNewWeights = 
+                                newWeights |> HMap.map (fun k a -> 
+                                    match attributesToNormalize|> List.contains k with
+                                    | true -> match a with
+                                                | Some a ->
+                                                    printfn "attr: %s a: %.10f a*scale %.10f" k a (a * scale |> clamp 0.0 1.0)
+                                                    Some (a * scale |> clamp 0.0 1.0) 
+                                                | _ -> None
+                                    | false -> a
+                                )
+                           
+                            { model with weights = normalizedNewWeights }
+
                             
         | _ -> model
 
@@ -270,7 +285,7 @@ let view (model : MTable) =
 
                             yield thead [] [    
                                 yield tr [] [                              
-                                    let binSize = 5
+                                    let binSize = 10
                                     for visibleName in visibleOrder do
                                         let attr = headers |> Map.find visibleName 
                                         match attr.kind with
@@ -507,7 +522,7 @@ let view (model : MTable) =
                                                 div [clazz "outerScore"][
                                                     stackBar;
                                                     p [][
-                                                        span[clazz "alignRight"][text scoreSum]]] // stackedbar...
+                                                        span[clazz "alignRight"][text scoreSum]]]
                                             )
                                     yield tr [] (columns)
                                 ]
@@ -516,7 +531,7 @@ let view (model : MTable) =
             )
 
 
-            Incremental.div (AttributeMap.ofList[clazz "container"; style "left: 10px; width: 100%%; height: 30px; position:relative"]) <| (
+            Incremental.div (AttributeMap.ofList[clazz "container"; style "left: 10px; width: 95%; height: 30px; position:relative"]) <| (
                 alist {
                     let! visibleOrder = model.visibleOrder
                     let! headers = model.header
@@ -548,13 +563,13 @@ let view (model : MTable) =
 
                                 let styleDragableScore =
                                     amap {                                   
-                                        let s = sprintf "font-size: 75%%; height: 30px; width: %.2f%%; background: %s; color: %s; float: left;" (width - 1.0) (colorToHex background) (colorToHex fontColor)
+                                        let s = sprintf "font-size: 75%%; height: 30px; width: %.2f%%; background: %s; color: %s; float: left; position: relative" (width) (colorToHex background) (colorToHex fontColor)
                                         yield style s
                                     } |> AttributeMap.ofAMap
 
                                 let styleCursor =
                                     amap {                                    
-                                        let s = "height: 30px; width: 2px; float: left; color: red"
+                                        let s = "height: 30px; width: 2px; float: left; color: red; position: absolute; right: 0; bottom: 0"
                                         yield onMouseDown (fun _ _ -> Drag (name))
                                         yield onMouseMoveRel (fun c -> MouseMove c)
                                         yield clazz "dragableWeights"
@@ -565,9 +580,10 @@ let view (model : MTable) =
                                     Incremental.div styleDragableScore <| (
                                         alist {
                                             yield text name
+                                            yield Incremental.div styleCursor AList.empty
                                         }
                                     )
-                                    Incremental.div styleCursor AList.empty
+                                    
                                 ]                        
                     }
             )
