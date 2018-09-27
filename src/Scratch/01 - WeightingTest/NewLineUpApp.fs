@@ -190,11 +190,11 @@ let update (model : Table) (msg : Message) =
                     { model with rows = sortedRows; header = newHeader }
 
         | NormalizeWeight -> 
+            let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
             let weights = 
-                model.header |> Map.map (fun key _ -> 
-                        match key with
-                        | "Score" -> None
-                        | _ -> Some (1.0 / float (getVisibleBarAttributes model.header model.visibleOrder).Length))
+                visibleBarAttributes |> List.map (fun attribute  ->
+                            (attribute.name, Some (1.0 / float (visibleBarAttributes).Length)))
+                            |> Map.ofList
             CalculateScore { model with weights = HMap.ofMap weights}
             
         | ToggleOptions ->
@@ -219,7 +219,18 @@ let update (model : Table) (msg : Message) =
                 | Some a ->                   
                     match header |> Map.tryFind a with
                         | None -> model
-                        | Some currentAttr ->    
+                        | Some currentAttr ->   
+                        
+                            let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
+                                    //check if last element is dragged
+                            //let newVisibleBarAttributes =
+                            //    match currentAttr.name == (visibleBarAttributes |> List.toSeq |> Seq.last).name with
+                            //    | true ->  visibleBarAttributes |> List.rev
+                            //        //let attribsWithoutLast =
+                            //        //            visibleBarAttributes |> List.toSeq |> Seq.r
+                            //        //        Seq.append [currentAttr] visibleBarAttributes |> Seq.toList
+                            //    | false -> visibleBarAttributes
+
                             let prevWeight = sumTill weights model.visibleOrder a
                             let thisWeight = 
                                 match weights |> HMap.tryFind a with
@@ -235,8 +246,9 @@ let update (model : Table) (msg : Message) =
                                     let oldBudget = (1.0 - (prevWeight + thisWeight)) 
                                     let newBudget = (1.0 - coord.X) |> clamp 0.0 1.0                    
                                     let scale = (newBudget/oldBudget) |> max 0.0 
-                                    //todo exception if not type bar!
-                                    let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder                                  
+     
+                                
+                                    
                                     let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
 
                                     //printfn "old: %.10f new %.10f" oldBudget newBudget
