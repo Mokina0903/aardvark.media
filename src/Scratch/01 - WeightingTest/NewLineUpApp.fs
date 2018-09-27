@@ -16,16 +16,26 @@ open System.Linq.Expressions
 open Aardvark.Base.Incremental
 
 
-let findOption (k : 'k)  (m : amap<'k,IMod<Option<'v>>>) : IMod<Option<'v>> =
+//let findOption (k : 'k)  (m : amap<'k,IMod<Option<'v>>>) : IMod<Option<'v>> =
+//    adaptive {
+//        let! v = AMap.tryFind k m
+//        match v with
+//            | Some v -> 
+//                let! v = v
+//                match v with
+//                    | None -> return None
+//                    | Some v -> return Some v
+//            | None -> return None
+//    }
+
+let findOption (k : 'k) (m : amap<'k, IMod<'v>>) : IMod<'v> =
     adaptive {
         let! v = AMap.tryFind k m
         match v with
             | Some v -> 
                 let! v = v
-                match v with
-                    | None -> return None
-                    | Some v -> return Some v
-            | None -> return None
+                return v
+            | None -> return Unchecked.defaultof<'v>
     }
 
 type Message =
@@ -54,7 +64,7 @@ let CalculateScore model =
                         match model.visibleOrder |> List.contains k with
                             | true -> 
                                 match model.weights |> HMap.tryFind k with
-                                    | Some (Some w) -> // w * (Value.toFloat v)
+                                    | Some w -> // w * (Value.toFloat v)
                                         let attr = model.header |> Map.find k //todo tryFind
                                         let stats = attr.stats
                                         let v = v |>  Value.toFloat
@@ -73,14 +83,14 @@ let CalculateScore model =
     { model with rows = updatedRows}
 
 
-let rec sumTill (weights : hmap<'a, Option<float>>) (xs : list<'a>) (c : 'a) = 
+let rec sumTill (weights : hmap<'a, float>) (xs : list<'a>) (c : 'a) = 
     match xs with
         | [] -> 0.0
         | x::xs ->  
             if x = c then 0.0
             else 
                 match weights |> HMap.tryFind x with
-                | Some (Some a) -> 
+                | Some a -> 
                     a + sumTill weights xs c
                 | _ -> sumTill weights xs c
 
@@ -111,6 +121,7 @@ let myOnChange (cb : bool -> 'msg) =
 let onMouseMoveRel (cb : V2d -> 'msg) : Attribute<'msg> =
     onEvent "onmousemove" [" toFixedV2d(relativePerc(event,'container'))"] (List.head >> Pickler.json.UnPickleOfString >> cb)
 
+
 let update (model : Table) (msg : Message) =
     match msg with
         | SetTargetMode (name, targetMode) ->
@@ -130,7 +141,7 @@ let update (model : Table) (msg : Message) =
                 | None -> model
 
         | SetWeight (name, value) ->
-            let newWeights = model.weights |> HMap.add name (Some value) 
+            let newWeights = model.weights |> HMap.add name value
             CalculateScore {model with weights = newWeights}
                  
         | AddAttribute key -> 
@@ -193,7 +204,7 @@ let update (model : Table) (msg : Message) =
             let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
             let weights = 
                 visibleBarAttributes |> List.map (fun attribute  ->
-                            (attribute.name, Some (1.0 / float (visibleBarAttributes).Length)))
+                            (attribute.name, (1.0 / float (visibleBarAttributes).Length)))
                             |> Map.ofList
             CalculateScore { model with weights = HMap.ofMap weights}
             
@@ -214,56 +225,65 @@ let update (model : Table) (msg : Message) =
             let header = model.header
             let weights = model.weights
             let attribute = model.dragedAttribute
+            let visibleOrder = model.visibleOrder
             match attribute with
                 | None -> model
                 | Some a ->                   
                     match header |> Map.tryFind a with
                         | None -> model
                         | Some currentAttr ->   
-                        
-                            let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
-                                    //check if last element is dragged
-                            //let newVisibleBarAttributes =
-                            //    match currentAttr.name == (visibleBarAttributes |> List.toSeq |> Seq.last).name with
-                            //    | true ->  visibleBarAttributes |> List.rev
-                            //        //let attribsWithoutLast =
-                            //        //            visibleBarAttributes |> List.toSeq |> Seq.r
-                            //        //        Seq.append [currentAttr] visibleBarAttributes |> Seq.toList
-                            //    | false -> visibleBarAttributes
-
+                            let ordredAttribs = getVisibleBarAttributes header visibleOrder
                             let prevWeight = sumTill weights model.visibleOrder a
                             let thisWeight = 
-                                match weights |> HMap.tryFind a with
-                                | Some (Some w) -> w            
-                                | _ -> 0.0
-                            match (thisWeight <= 0.0 && ((coord.X - (prevWeight + thisWeight)) <= 0.0)) with
-                                | true -> model
-                                | false ->
-                                    //printfn "this weight now: %.10f" (thisWeight)
-                                    let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0))
-                                    //printfn "changed by %.10f, coordX = %.10f" (coord.X - (prevWeight + thisWeight)) coord.X
-                            
-                                    let oldBudget = (1.0 - (prevWeight + thisWeight)) 
-                                    let newBudget = (1.0 - coord.X) |> clamp 0.0 1.0                    
-                                    let scale = (newBudget/oldBudget) |> max 0.0 
-     
-                                
-                                    
-                                    let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
+                                    match weights |> HMap.tryFind a with
+                                        | Some w -> w            
+                                        | _ -> 0.0
+                            let delta = (coord.X - (prevWeight + thisWeight))
+                            let input1 = ordredAttribs |> List.map (fun a ->
+                                        let weight = match weights |> HMap.tryFind a.name with
+                                                     |Some w -> w
+                                                     | _ -> 0.0
+                                        a.name, weight)
+                            let newWeights =
+                                match attribute with
+                                | Some a -> model.weightingFunction input1 a delta |> HMap.ofList
+                                | None -> weights                             
 
-                                    //printfn "old: %.10f new %.10f" oldBudget newBudget
-                                    let attributesToNormalize = snd (visibleBarAttributes |> List.splitAt (actualIndex+1)) |> List.map ( fun e -> e.name)                            
-                                    let normalizedNewWeights = 
-                                        newWeights |> HMap.map (fun k a -> 
-                                            match attributesToNormalize|> List.contains k with
-                                            | true -> match a with
-                                                        | Some a ->
-                                                            printfn "attr: %s a: %.10f a*scale %.10f" k a (a * scale |> clamp 0.0 1.0)
-                                                            Some (a * scale |> clamp 0.0 1.0) 
-                                                        | _ -> None
-                                            | false -> a
-                                        )                           
-                                    { model with weights = normalizedNewWeights }
+                            { model with weights = newWeights }
+                            //let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
+                                    
+                            //let prevWeight = sumTill weights model.visibleOrder a
+                            //let thisWeight = 
+                            //    match weights |> HMap.tryFind a with
+                            //    | Some (Some w) -> w            
+                            //    | _ -> 0.0
+                            //match (thisWeight <= 0.0 && ((coord.X - (prevWeight + thisWeight)) <= 0.0)) with
+                            //    | true -> model
+                            //    | false ->
+                            //        //printfn "this weight now: %.10f" (thisWeight)
+                            //        let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0))
+                            //        //printfn "changed by %.10f, coordX = %.10f" (coord.X - (prevWeight + thisWeight)) coord.X
+                            
+                            //        let oldBudget = (1.0 - (prevWeight + thisWeight)) 
+                            //        let newBudget = (1.0 - coord.X) |> clamp 0.0 1.0                    
+                            //        let scale = (newBudget/oldBudget) |> max 0.0 
+     
+                                                               
+                            //        let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
+
+                            //        //printfn "old: %.10f new %.10f" oldBudget newBudget
+                            //        let attributesToNormalize = snd (visibleBarAttributes |> List.splitAt (actualIndex+1)) |> List.map ( fun e -> e.name)                            
+                            //        let normalizedNewWeights = 
+                            //            newWeights |> HMap.map (fun k a -> 
+                            //                match attributesToNormalize|> List.contains k with
+                            //                | true -> match a with
+                            //                            | Some a ->
+                            //                                printfn "attr: %s a: %.10f a*scale %.10f" k a (a * scale |> clamp 0.0 1.0)
+                            //                                Some (a * scale |> clamp 0.0 1.0) 
+                            //                            | _ -> None
+                            //                | false -> a
+                            //            )                           
+                            //        { model with weights = normalizedNewWeights }
 
                             
         | _ -> model
@@ -412,10 +432,14 @@ let view (model : MTable) =
                                                                             yield clazz "weightInput"; 
                                                                             yield "type" => "number"; 
                                                                             yield onChange onChangeWeight;
-                                                                            let! currentWeight = findOption visibleName model.weights
-                                                                            match currentWeight with
-                                                                                | None -> yield "value" => "0.0"
-                                                                                | Some s -> yield "value" => sprintf "%.2f" s
+                                                                            let! currentWeight = 
+                                                                                adaptive {
+                                                                                    let! v = AMap.tryFind visibleName model.weights
+                                                                                    match v with
+                                                                                        | Some v -> return sprintf "%.2f" v                                                                    
+                                                                                        | None -> return "0.0"
+                                                                                }
+                                                                            yield "value" => currentWeight
                                                                         } |> AttributeMap.ofAMap
                                                                     yield Incremental.input attribs        
                                                                 ]
@@ -489,12 +513,12 @@ let view (model : MTable) =
                                                         let attribute = headers |> Map.find key
                                                         let w = 
                                                             adaptive {
-                                                                let! w = findOption key model.weights
-                                                                match w with
-                                                                    | Some w -> return w
+                                                                let! v = AMap.tryFind key model.weights
+                                                                match v with
+                                                                    | Some w -> return w                                                                  
                                                                     | None -> return 0.0
-
                                                             }
+                                                           
                                                         let width = 
                                                             adaptive {
                                                                 let! w = w
@@ -545,23 +569,27 @@ let view (model : MTable) =
                 alist {
                     let! visibleOrder = model.visibleOrder
                     let! headers = model.header
+                    let visibleBarAttributes = getVisibleBarAttributes headers visibleOrder
+
                     //let! weights = model.weights
                     let! colors = model.colors
 
                     let! dragedAttr = model.dragedAttribute
 
-                    for name in visibleOrder do
-                        let attribute = headers |> Map.find name
+                    for attribute in visibleBarAttributes do
+                                            
                         let! width =
+
+
                             adaptive {
-                                let! w = findOption name model.weights
+                                let! w = AMap.tryFind attribute.name model.weights
                                 match w with
                                     | None -> return 0.0
-                                    | Some w -> return w * 100.0
+                                    | Some w -> return w * 99.9
                             }
 
                         let (background, fontColor) =
-                            match colors |> Map.tryFind name with
+                            match colors |> Map.tryFind attribute.name with
                                 | Some c -> 
                                     let textCol = 
                                         match c.A with
@@ -581,21 +609,24 @@ let view (model : MTable) =
                                     } |> AttributeMap.ofAMap
 
                                 let styleCursor =
-                                    amap {                                                                                                                                                         
-                                        yield onMouseDown (fun _ _ -> Drag (name))
-                                        yield onMouseMoveRel (fun c -> MouseMove c)
-                                        yield clazz "weightsDragCursor"
-                                    } |> AttributeMap.ofAMap
+                                    //check if last element is dragged
+                                    amap {
+                                        match attribute.name == (visibleBarAttributes |> List.toSeq |> Seq.last).name with
+                                        | true -> ()                                     
+                                        | false ->                                                                                                                                                        
+                                                yield onMouseDown (fun _ _ -> Drag (attribute.name))
+                                                yield onMouseMoveRel (fun c -> MouseMove c)
+                                                yield clazz "weightsDragCursor"
+                                    } |> AttributeMap.ofAMap                                  
                            
                                 yield div [] [
                                     Incremental.div styleDragableScore <| (
                                         alist {
-                                            yield text name
+                                            yield text attribute.name
                                             yield Incremental.div styleCursor AList.empty
                                         }
-                                    )
-                                    
-                                ]                        
+                                    )                                   
+                                ]         
                     }
             )
 

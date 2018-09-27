@@ -14,12 +14,13 @@ module Mutable =
         inherit obj()
         let mutable __current : Aardvark.Base.Incremental.IModRef<NewLineUpModel.Table> = Aardvark.Base.Incremental.EqModRef<NewLineUpModel.Table>(__initial) :> Aardvark.Base.Incremental.IModRef<NewLineUpModel.Table>
         let _header = ResetMod.Create(__initial.header)
-        let _weights = MMap.Create(__initial.weights, (fun v -> MOption.Create(v)), (fun (m,v) -> MOption.Update(m, v)), (fun v -> v :> IMod<_>))
+        let _weights = MMap.Create(__initial.weights)
         let _rows = ResetMod.Create(__initial.rows)
         let _visibleOrder = ResetMod.Create(__initial.visibleOrder)
         let _showOptions = ResetMod.Create(__initial.showOptions)
         let _colors = ResetMod.Create(__initial.colors)
         let _dragedAttribute = MOption.Create(__initial.dragedAttribute)
+        let _weightingFunction = ResetMod.Create(__initial.weightingFunction)
         
         member x.header = _header :> IMod<_>
         member x.weights = _weights :> amap<_,_>
@@ -28,6 +29,7 @@ module Mutable =
         member x.showOptions = _showOptions :> IMod<_>
         member x.colors = _colors :> IMod<_>
         member x.dragedAttribute = _dragedAttribute :> IMod<_>
+        member x.weightingFunction = _weightingFunction :> IMod<_>
         
         member x.Current = __current :> IMod<_>
         member x.Update(v : NewLineUpModel.Table) =
@@ -41,6 +43,7 @@ module Mutable =
                 ResetMod.Update(_showOptions,v.showOptions)
                 ResetMod.Update(_colors,v.colors)
                 MOption.Update(_dragedAttribute, v.dragedAttribute)
+                ResetMod.Update(_weightingFunction,v.weightingFunction)
                 
         
         static member Create(__initial : NewLineUpModel.Table) : MTable = MTable(__initial)
@@ -64,7 +67,7 @@ module Mutable =
                     override x.Update(r,f) = { r with header = f r.header }
                 }
             let weights =
-                { new Lens<NewLineUpModel.Table, Aardvark.Base.hmap<System.String,Microsoft.FSharp.Core.Option<System.Double>>>() with
+                { new Lens<NewLineUpModel.Table, Aardvark.Base.hmap<System.String,System.Double>>() with
                     override x.Get(r) = r.weights
                     override x.Set(r,v) = { r with weights = v }
                     override x.Update(r,f) = { r with weights = f r.weights }
@@ -98,4 +101,10 @@ module Mutable =
                     override x.Get(r) = r.dragedAttribute
                     override x.Set(r,v) = { r with dragedAttribute = v }
                     override x.Update(r,f) = { r with dragedAttribute = f r.dragedAttribute }
+                }
+            let weightingFunction =
+                { new Lens<NewLineUpModel.Table, Microsoft.FSharp.Collections.List<(System.String * System.Double)> -> System.String -> System.Double -> Microsoft.FSharp.Collections.List<(System.String * System.Double)>>() with
+                    override x.Get(r) = r.weightingFunction
+                    override x.Set(r,v) = { r with weightingFunction = v }
+                    override x.Update(r,f) = { r with weightingFunction = f r.weightingFunction }
                 }

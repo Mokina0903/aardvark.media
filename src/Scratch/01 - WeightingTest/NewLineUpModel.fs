@@ -45,16 +45,43 @@ type Row =
  open Aardvark.Base.Incremental
  open Aardvark.Base
 
+
+ type WeightingFunction = list<string * float> -> string -> float -> list<string * float>
+
+ module WeightingFunctions =
+
+    //let absolutSplit (xs : list<float>) (oldValue : float) (delta : float) =
+    //    let left,right = List.partition (fun v -> v <= oldValue) xs
+    //    let leftDelta = -delta / (List.length left |> double)
+    //    let rightDelta = delta / (List.length right |> double)
+    //    (List.map ((+)leftDelta) left) @ List.map ((+)rightDelta) right
+
+    /// > absolutSplit2 ["a",0.25;"b",0.25;"c",0.25;"d",0.25] "b" 0.1;;
+    // val it : (string * float) list =
+    //   [("a", 0.3); ("b", 0.3); ("c", 0.2); ("d", 0.2)]
+    let absolutSplit2 (weights : list<string * float>) (draggedElement : string) (delta : float) =
+        let index = List.findIndex (fun (name,_) -> name = draggedElement) weights
+        let lefts = List.take (index+1) weights // contains element with index (inclusive)
+        let rights = List.skip (index+1) weights
+        // if postivie -> left becomes larger. this is the case we handle (other case is handled by negative delta)
+        let deltaOnLeftSide = float delta / (float (List.length lefts))
+        let deltaOnRightSide = - (float delta / (float (List.length rights)))
+        let unnormalizedList = (List.map (fun (n,w) -> n, (w + deltaOnLeftSide) |> clamp 0.0 1.0) lefts) @ (List.map (fun (n,w) -> n, (w + deltaOnRightSide) |> clamp 0.0 1.0) rights)
+        let factor = unnormalizedList |> List.sumBy snd
+        unnormalizedList |> List.map (fun (n, w) -> n, w / factor)
+
+
 [<DomainType>]
 type Table =
     {
         header : Map<string, Attribute>
-        weights : hmap<string, Option<float>>
+        weights : hmap<string, float> // pre filterd list contains only attribute of type BAR (numerical values)
         rows : array<Row>
         visibleOrder : List<string>
         showOptions: bool
         colors : Map<string, C4b>
         dragedAttribute: Option<string>
+        weightingFunction : WeightingFunction
     }
 
 module Parsing =
@@ -170,13 +197,16 @@ module Parsing =
                 header = Map.map computeStatistics h   
                 rows = rows
                 weights = 
-                    h 
-                      |> Map.map (fun key a -> 
-                            match a.kind with
-                            | Bar _ -> Some (1.0 / float (visibleOrd.Length-2)) //todo leave out non bar elements
-                            | _ -> None
-                         ) 
-                      |> HMap.ofMap
+                    h   
+                    |> Map.filter ( fun k a -> a.kind = Bar Target.Max || a.kind = Bar Target.Min) 
+                    |> Map.map (fun k a -> 1.0/(float visibleOrd.Length-2.0)) //todo fix this
+                    |> HMap.ofMap
+                      //|> Map.map (fun key a -> 
+                      //      match a.kind with
+                      //      | Bar _ -> Some (1.0 / float (visibleOrd.Length-2)) //todo leave out non bar elements
+                      //      | _ -> None
+                      //   ) 
+                      //|> HMap.ofMap
                 visibleOrder = visibleOrd
                 showOptions = true
                 colors =
@@ -199,7 +229,8 @@ module Parsing =
                     seqH 
                         |> Seq.map (fun (i,h) -> ((fst h), colors.[i % colors.Length]))
                         |> Map.ofSeq
-                dragedAttribute = None                        
+                dragedAttribute = None    
+                weightingFunction = WeightingFunctions.absolutSplit2
             }
         else 
             failwith "not enough lines"
