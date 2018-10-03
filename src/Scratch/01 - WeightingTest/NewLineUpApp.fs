@@ -53,6 +53,7 @@ type Message =
     | Drag of string
     | StopDrag
     | MouseMove of V2d
+    | Done
 
 let CalculateScore model =
     let updatedRows = 
@@ -82,6 +83,57 @@ let CalculateScore model =
             { row with values = updatedAttrList})
     { model with rows = updatedRows}
 
+let colorToHex (color : C3b) = 
+    let bytes = [| color.R; color.G; color.B |]
+    let colorString = 
+        bytes 
+            |> Array.map (fun (x : byte) -> System.String.Format("{0:X2}", x))
+            |> String.concat System.String.Empty
+    "#"+colorString
+
+let getColors (key: string) (colors: Map<string, C4b>)  =
+    match colors |> Map.tryFind key with
+                    | Some c -> 
+                        let textCol = 
+                            match c.A with
+                                | 0uy -> C3b.Black
+                                | _ -> C3b.White
+                        (colorToHex (c.ToC3b()), colorToHex textCol)
+                    | None -> (colorToHex C3b.Black, colorToHex C3b.White)
+
+let getValuesByAttribute (key: string) (rows: Row array) =
+    let value (row : Row) : float =
+        let v = Map.find key row.values
+        Value.toFloat v
+    Array.map value rows
+         
+let createHisto (attribute: Attribute) (rows: Row array) (colors: Map<string, C4b>) (binSize: int) =
+    let min = attribute.stats.min
+    let max = attribute.stats.max
+    let boundSize = (max - min) / float (binSize-1)
+    let bounds =
+        match boundSize = 0.0 with
+        | true -> Array.create (binSize - 1) 0.0
+        | false -> [|min .. boundSize .. max|]
+
+    let values = getValuesByAttribute attribute.name rows
+
+    let heights : int[] =     
+        bounds |> Array.indexed |> Array.map (fun (i, b) ->
+            match i with
+            | 0 -> values |> Array.filter (fun x -> x <= bounds.[i]) |> Array.length
+            | _ -> values |> Array.filter (fun x -> x > bounds.[i-1] && x <= bounds.[i]) |> Array.length                                          
+        )                                                                                     
+                                    
+    let (background, fontColor) =
+        getColors attribute.name colors
+                
+    th [] [
+        div [clazz "histoContainer"][
+            for h in heights do
+                yield div [style (sprintf "width: %i%%; height: %i%%; background: %s" ((100/binSize)-1) ((100/Array.max heights*h)) (background))] []
+            ]
+    ]
 
 let rec sumTill (weights : hmap<'a, float>) (xs : list<'a>) (c : 'a) = 
     match xs with
@@ -104,13 +156,6 @@ let getVisibleBarAttributes (header : Map<string,Attribute>) (visibleOrder : lis
             | _ -> None
     )         
 
-let colorToHex (color : C3b) = 
-    let bytes = [| color.R; color.G; color.B |]
-    let colorString = 
-        bytes 
-            |> Array.map (fun (x : byte) -> System.String.Format("{0:X2}", x))
-            |> String.concat System.String.Empty
-    "#"+colorString
 
 let getScoreDiv (width: float) (color: string) =
     div [style (sprintf "width: %.2f%%; background : %s" width color)] []
@@ -121,6 +166,7 @@ let myOnChange (cb : bool -> 'msg) =
 let onMouseMoveRel (cb : V2d -> 'msg) : Attribute<'msg> =
     onEvent "onmousemove" [" toFixedV2d(relativePerc(event,'container'))"] (List.head >> Pickler.json.UnPickleOfString >> cb)
 
+let sw = System.Diagnostics.Stopwatch.StartNew()
 
 let update (model : Table) (msg : Message) =
     match msg with
@@ -221,6 +267,9 @@ let update (model : Table) (msg : Message) =
         | StopDrag ->
             { model with dragedAttribute = None}
             
+        | Done -> 
+            printfn "took: %A" (sw.Elapsed.TotalSeconds - model.lastUpdateTime)
+            model
         | MouseMove coord ->
             let header = model.header
             let weights = model.weights
@@ -249,7 +298,7 @@ let update (model : Table) (msg : Message) =
                                 | Some a -> model.weightingFunction input1 a delta |> HMap.ofList
                                 | None -> weights                             
 
-                            { model with weights = newWeights }
+                            { model with weights = newWeights; lastUpdateTime = sw.Elapsed.TotalSeconds }
                             //let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
                                     
                             //let prevWeight = sumTill weights model.visibleOrder a
@@ -309,7 +358,6 @@ let view (model : MTable) =
                             let! headers = model.header
                             let! visibleOrder = model.visibleOrder
                             let! rows = model.rows
-                            //let! weights = model.weights
                             let! showOptions = model.showOptions
                             let! colors = model.colors
 
@@ -317,50 +365,14 @@ let view (model : MTable) =
                                 yield tr [] [                              
                                     let binSize = 10
                                     for visibleName in visibleOrder do
-                                        let attr = headers |> Map.find visibleName 
-                                        match attr.kind with
-                                        | Bar _ ->
-                                            let attribute = headers |> Map.find visibleName
-                                            let min = attribute.stats.min
-                                            let max = attribute.stats.max
-                                            let boundSize = (max - min) / float (binSize-1)
-                                            let bounds =
-                                                match boundSize = 0.0 with
-                                                | true -> Array.create (binSize - 1) 0.0
-                                                | false -> [|min .. boundSize .. max|]
-                                            let p (row : Row) : float =
-                                                let m = Map.find visibleName row.values
-                                                Value.toFloat m
-
-                                            let values = Array.map p rows
-
-                                            let heights : int[] =     
-                                                bounds |> Array.indexed |> Array.map (fun (i, b) ->
-                                                    match i with
-                                                    | 0 -> values |> Array.filter (fun x -> x <= bounds.[i]) |> Array.length
-                                                    | _ -> values |> Array.filter (fun x -> x > bounds.[i-1] && x <= bounds.[i]) |> Array.length                                          
-                                                )                                                                                     
-                                    
-                                            let (background, fontColor) =
-                                                        match colors |> Map.tryFind visibleName with
-                                                            | Some c -> 
-                                                                let textCol = 
-                                                                    match c.A with
-                                                                        | 0uy -> C3b.Black
-                                                                        | _ -> C3b.White
-                                                                (c.ToC3b(), textCol)
-                                                            | None -> (C3b.Black, C3b.White)
-
-                                            yield th [] [
-                                                div [clazz "histoContainer"][
-                                                    for h in heights do
-                                                        yield div [style (sprintf "width: %i%%; height: %ipx; background: %s" ((100/binSize)-1) ((50/Array.max heights*h)) (colorToHex background))] []
-                                                    ]
-                                            ]
+                                        let attribute = headers |> Map.find visibleName 
+                                        match attribute.kind with
+                                        | Bar _ -> yield createHisto attribute rows colors binSize                                           
                                         | _ -> yield th [] []
            
                                 ]
 
+                                // Histo per Attribute
                                 yield tr [] [
                                     for visibleName in visibleOrder do
                                         let attr = headers |> Map.find visibleName
@@ -372,48 +384,42 @@ let view (model : MTable) =
                                                 | Inactive -> ""
 
                                         let (background, fontColor) =
-                                            match colors |> Map.tryFind visibleName with
-                                                | Some c -> 
-                                                    let textCol = 
-                                                        match c.A with
-                                                            | 0uy -> C3b.Black
-                                                            | _ -> C3b.White
-                                                    (c.ToC3b(), textCol)
-                                                | None -> (C3b.Black, C3b.White)
+                                            getColors visibleName colors
 
                                         let selected =
                                             match attr.selected with
                                             | true -> "selected"
                                             | _ -> "selectable"
                                                         
-                                        yield th [clazz selected; onClick (fun _ -> Sort visibleName); style ("background: " + (colorToHex background) + "; color: " + (colorToHex fontColor)); onMouseMove (fun _ -> Highlight (visibleName, true)); onMouseLeave (fun _ -> Highlight (visibleName, false))] [
+                                        yield th [clazz selected; onClick (fun _ -> Sort visibleName); style ("background: " + (background) + "; color: " + (fontColor)); onMouseMove (fun _ -> Highlight (visibleName, true)); onMouseLeave (fun _ -> Highlight (visibleName, false))] [
                                             text attr.name;
                                             div[clazz "sortingSymbol"] [
                                                 i [clazz iconClass][]
                                                 ]
                                         ]
                                     ]
-
+                                
+                                // Additional Options for prefered weighting target and manual weight setting
                                 match showOptions with
                                     | false -> ()
                                     | true -> 
                                             yield tr [] [
                                                 for visibleName in visibleOrder do
-                                                    let attr = headers |> Map.find visibleName  
+                                                    let attribute = headers |> Map.find visibleName  
                                 
                                                     let newTarget =
-                                                                    match attr.kind with
+                                                                    match attribute.kind with
                                                                     | Bar Max-> Bar Min
                                                                     | Bar Min -> Bar Max
-                                                                    | _ -> attr.kind
+                                                                    | _ -> attribute.kind
                                 
                                                     let targetButtonClass =
-                                                        match attr.kind with
+                                                        match attribute.kind with
                                                             | Bar Max -> "ui olive basic mini button"
                                                             | Bar Min -> "ui orange basic mini button"
                                                             | _ -> ""
                                       
-                                                    match attr.kind with
+                                                    match attribute.kind with
                                                         | Plain | Score -> yield th [][text ""]
                                                         | _ ->
                                                             yield th [] [                                           
@@ -446,7 +452,7 @@ let view (model : MTable) =
                                                                                                       
                                                                 button [clazz targetButtonClass; clazz "targetButtons"
                                                                         onClick( fun _ -> SetTargetMode (visibleName, newTarget))
-                                                                        ] [text (match attr.kind with
+                                                                        ] [text (match attribute.kind with
                                                                                 | Bar Max -> "Max"
                                                                                 | Bar Min -> "Min"
                                                                                 | _ -> ""
@@ -477,14 +483,7 @@ let view (model : MTable) =
                                                         | Min -> 100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min))
                                              
                                                 let (background, fontColor) =
-                                                    match colors |> Map.tryFind x with
-                                                        | Some c -> 
-                                                            let textCol = 
-                                                                match c.A with
-                                                                    | 0uy -> C3b.Black
-                                                                    | _ -> C3b.White
-                                                            (c.ToC3b(), textCol)
-                                                        | None -> (C3b.Black, C3b.White)
+                                                    getColors attribute.name colors
                                             
                                                 let selected =
                                                     match attribute.selected with
@@ -493,7 +492,7 @@ let view (model : MTable) =
 
                                                 td [] [
                                                     div [clazz selected; clazz "outer"] [                                                        
-                                                        div [clazz "inner"; style (sprintf "width: %.2f%%; background: %s; color: %s" percentage (colorToHex background) (colorToHex fontColor))] []
+                                                        div [clazz "inner"; style (sprintf "width: %.2f%%; background: %s; color: %s" percentage (background) (fontColor))] []
                                                         p [] [
                                                             span [clazz "alignLeft"][text (sprintf "%.2f%%" percentage)]
                                                             span [clazz "alignRight"][text (sprintf "%.2f" v)]
@@ -532,10 +531,8 @@ let view (model : MTable) =
                                                                             | Min ->  return w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
                                                                         | _ -> return 0.0
                                                             }
-                                                        let color = 
-                                                            match colors |> Map.tryFind key with
-                                                                | Some c -> colorToHex (c.ToC3b())
-                                                                | _ -> colorToHex C3b.Black
+                                                        let (background, fontColor) =
+                                                            getColors attribute.name colors
                                                     
                                                         let selected =
                                                             match attribute.selected with
@@ -546,7 +543,7 @@ let view (model : MTable) =
                                                             amap {
                                                                 yield clazz selected; yield onMouseMove (fun _ -> Highlight (key, true)); yield onMouseLeave (fun _ -> Highlight (key, false))
                                                                 let! w = width
-                                                                yield style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" w color);
+                                                                yield style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" w (background));
                                                             } |> AttributeMap.ofAMap
                                             
                                                         Incremental.div attributes AList.empty
@@ -589,21 +586,14 @@ let view (model : MTable) =
                             }
 
                         let (background, fontColor) =
-                            match colors |> Map.tryFind attribute.name with
-                                | Some c -> 
-                                    let textCol = 
-                                        match c.A with
-                                            | 0uy -> C3b.Black
-                                            | _ -> C3b.White
-                                    (c.ToC3b(), textCol)
-                                | None -> (C3b.Black, C3b.White)
+                            getColors attribute.name colors
+
                         match width with
                             | 0.0 -> ()
                             | _ ->
-
                                 let styleDragableScore =
                                     amap {                                   
-                                        let s = sprintf " width: %.2f%%; background: %s; color: %s" (width) (colorToHex background) (colorToHex fontColor)
+                                        let s = sprintf " width: %.2f%%; background: %s; color: %s" (width) (background) (fontColor)
                                         yield style s
                                         yield clazz "draggableWeights"
                                     } |> AttributeMap.ofAMap
@@ -655,6 +645,24 @@ let view (model : MTable) =
                 button [onClick (fun _ -> NormalizeWeight)] [text "normalize Weights"]
                 button [onClick (fun _ -> ToggleOptions)] [text "additional Options"]
             ]
+
+            div [] [
+                Incremental.div AttributeMap.empty <|
+                    alist {
+                        let! w = model.weights |> AMap.toMod
+                        yield onBoot "aardvark.processEvent('__ID__', 'finished');" (
+                            div [onEvent "finished" [] (fun _ -> Done)] []
+                        )
+                    }
+            ]
+        //    alist {
+        //        let! a = model.value
+        //        for i in 0 .. 10 do
+        //            yield button [] [text "ADF"]//text (sprintf "%d" a)]
+        //        yield onBoot "aardvark.processEvent('__ID__', 'finished');" (
+        //            button [onEvent "finished" [] (fun _ -> Done)] [text "urdar"]
+        //        )
+        //    }
 
 
         ]

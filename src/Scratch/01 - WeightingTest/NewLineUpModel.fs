@@ -82,6 +82,8 @@ type Table =
         colors : Map<string, C4b>
         dragedAttribute: Option<string>
         weightingFunction : WeightingFunction
+
+        lastUpdateTime : float
     }
 
 module Parsing =
@@ -231,6 +233,7 @@ module Parsing =
                         |> Map.ofSeq
                 dragedAttribute = None    
                 weightingFunction = WeightingFunctions.absolutSplit2
+                lastUpdateTime = 0.0
             }
         else 
             failwith "not enough lines"

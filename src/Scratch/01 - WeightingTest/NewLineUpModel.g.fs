@@ -21,6 +21,7 @@ module Mutable =
         let _colors = ResetMod.Create(__initial.colors)
         let _dragedAttribute = MOption.Create(__initial.dragedAttribute)
         let _weightingFunction = ResetMod.Create(__initial.weightingFunction)
+        let _lastUpdateTime = ResetMod.Create(__initial.lastUpdateTime)
         
         member x.header = _header :> IMod<_>
         member x.weights = _weights :> amap<_,_>
@@ -30,6 +31,7 @@ module Mutable =
         member x.colors = _colors :> IMod<_>
         member x.dragedAttribute = _dragedAttribute :> IMod<_>
         member x.weightingFunction = _weightingFunction :> IMod<_>
+        member x.lastUpdateTime = _lastUpdateTime :> IMod<_>
         
         member x.Current = __current :> IMod<_>
         member x.Update(v : NewLineUpModel.Table) =
@@ -44,6 +46,7 @@ module Mutable =
                 ResetMod.Update(_colors,v.colors)
                 MOption.Update(_dragedAttribute, v.dragedAttribute)
                 ResetMod.Update(_weightingFunction,v.weightingFunction)
+                ResetMod.Update(_lastUpdateTime,v.lastUpdateTime)
                 
         
         static member Create(__initial : NewLineUpModel.Table) : MTable = MTable(__initial)
@@ -107,4 +110,10 @@ module Mutable =
                     override x.Get(r) = r.weightingFunction
                     override x.Set(r,v) = { r with weightingFunction = v }
                     override x.Update(r,f) = { r with weightingFunction = f r.weightingFunction }
+                }
+            let lastUpdateTime =
+                { new Lens<NewLineUpModel.Table, System.Double>() with
+                    override x.Get(r) = r.lastUpdateTime
+                    override x.Set(r,v) = { r with lastUpdateTime = v }
+                    override x.Update(r,f) = { r with lastUpdateTime = f r.lastUpdateTime }
                 }
