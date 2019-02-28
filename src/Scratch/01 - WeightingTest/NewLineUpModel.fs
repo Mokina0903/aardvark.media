@@ -71,6 +71,24 @@ type Row =
         unnormalizedList |> List.map (fun (n, w) -> n, w / factor)
 
 
+type Message =
+    | Nop
+    | SetTargetMode of (string * Kind)
+    | SetWeight of (string * float)
+    | AddAttributeAt of (string * int)
+    | AddAttribute of string
+    | RemoveAttribute of string
+    | CalculateScore
+    | NormalizeWeight
+    | ToggleOptions
+    | Sort of string
+    | Highlight of (string * bool)
+    | Drag of string
+    | StopDrag
+    | MouseMove of V2d
+    | Done
+    | StartBench 
+
 [<DomainType>]
 type Table =
     {
@@ -84,6 +102,7 @@ type Table =
         weightingFunction : WeightingFunction
 
         lastUpdateTime : float
+        threads : ThreadPool<Message>
     }
 
 module Parsing =
@@ -234,6 +253,7 @@ module Parsing =
                 dragedAttribute = None    
                 weightingFunction = WeightingFunctions.absolutSplit2
                 lastUpdateTime = 0.0
+                threads = ThreadPool.empty
             }
         else 
             failwith "not enough lines"

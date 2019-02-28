@@ -22,6 +22,7 @@ module Mutable =
         let _dragedAttribute = MOption.Create(__initial.dragedAttribute)
         let _weightingFunction = ResetMod.Create(__initial.weightingFunction)
         let _lastUpdateTime = ResetMod.Create(__initial.lastUpdateTime)
+        let _threads = ResetMod.Create(__initial.threads)
         
         member x.header = _header :> IMod<_>
         member x.weights = _weights :> amap<_,_>
@@ -32,6 +33,7 @@ module Mutable =
         member x.dragedAttribute = _dragedAttribute :> IMod<_>
         member x.weightingFunction = _weightingFunction :> IMod<_>
         member x.lastUpdateTime = _lastUpdateTime :> IMod<_>
+        member x.threads = _threads :> IMod<_>
         
         member x.Current = __current :> IMod<_>
         member x.Update(v : NewLineUpModel.Table) =
@@ -47,6 +49,7 @@ module Mutable =
                 MOption.Update(_dragedAttribute, v.dragedAttribute)
                 ResetMod.Update(_weightingFunction,v.weightingFunction)
                 ResetMod.Update(_lastUpdateTime,v.lastUpdateTime)
+                ResetMod.Update(_threads,v.threads)
                 
         
         static member Create(__initial : NewLineUpModel.Table) : MTable = MTable(__initial)
@@ -116,4 +119,10 @@ module Mutable =
                     override x.Get(r) = r.lastUpdateTime
                     override x.Set(r,v) = { r with lastUpdateTime = v }
                     override x.Update(r,f) = { r with lastUpdateTime = f r.lastUpdateTime }
+                }
+            let threads =
+                { new Lens<NewLineUpModel.Table, Aardvark.Base.Incremental.ThreadPool<NewLineUpModel.Message>>() with
+                    override x.Get(r) = r.threads
+                    override x.Set(r,v) = { r with threads = v }
+                    override x.Update(r,f) = { r with threads = f r.threads }
                 }

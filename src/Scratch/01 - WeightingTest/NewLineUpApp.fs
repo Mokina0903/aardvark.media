@@ -38,22 +38,6 @@ let findOption (k : 'k) (m : amap<'k, IMod<'v>>) : IMod<'v> =
             | None -> return Unchecked.defaultof<'v>
     }
 
-type Message =
-    | Nop
-    | SetTargetMode of (string * Kind)
-    | SetWeight of (string * float)
-    | AddAttributeAt of (string * int)
-    | AddAttribute of string
-    | RemoveAttribute of string
-    | CalculateScore
-    | NormalizeWeight
-    | ToggleOptions
-    | Sort of string
-    | Highlight of (string * bool)
-    | Drag of string
-    | StopDrag
-    | MouseMove of V2d
-    | Done
 
 let CalculateScore model =
     let updatedRows = 
@@ -170,6 +154,18 @@ let sw = System.Diagnostics.Stopwatch.StartNew()
 
 let update (model : Table) (msg : Message) =
     match msg with
+        | StartBench -> 
+            let whatTo = "Effective pixels"
+            let p = 
+                proclist {
+                    yield Drag whatTo
+                    for i in 0 .. 10 do
+                        let! _ = Proc.Sleep 100
+                        yield MouseMove(V2d(float i / 10.0, 0.0))
+                    yield StopDrag 
+                }
+            { model with threads = ThreadPool.start p model.threads }
+
         | SetTargetMode (name, targetMode) ->
             let attr = 
                 match model.header |> Map.tryFind name with
@@ -361,8 +357,9 @@ let view (model : MTable) =
                             let! showOptions = model.showOptions
                             let! colors = model.colors
 
-                            yield thead [] [    
-                                yield tr [] [                              
+                            yield thead [] [
+                                // histograms      
+                                yield tr [] [
                                     let binSize = 10
                                     for visibleName in visibleOrder do
                                         let attribute = headers |> Map.find visibleName 
@@ -644,6 +641,7 @@ let view (model : MTable) =
             div [clazz "attributesDiv"] [
                 button [onClick (fun _ -> NormalizeWeight)] [text "normalize Weights"]
                 button [onClick (fun _ -> ToggleOptions)] [text "additional Options"]
+                button [onClick (fun _ -> StartBench)] [text "start benchmark"]
             ]
 
             div [] [
@@ -669,7 +667,7 @@ let view (model : MTable) =
     )
 
 let threads (model : Table) = 
-    ThreadPool.empty
+    model.threads
 
 let app () =                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
     {
