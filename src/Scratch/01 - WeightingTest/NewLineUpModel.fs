@@ -111,7 +111,7 @@ module Parsing =
     open System.IO
     open Aardvark.Base
 
-    let example1 = @"C:\Users\monikawissmann\Desktop\aardvark.media\src\Scratch\01 - WeightingTest\resources\Camera.csv"
+    let example1 = @"..\..\..\src\Scratch\01 - WeightingTest\resources\Camera.csv" //this path... orly?
 
     let getRowDescription (nameLine : string) (typeLine: string) : RowDescription  =
         let names = nameLine.Split(';') |> Array.toList
