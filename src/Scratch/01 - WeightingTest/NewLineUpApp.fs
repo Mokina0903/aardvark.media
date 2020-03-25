@@ -150,8 +150,6 @@ let myOnChange (cb : bool -> 'msg) =
 let onMouseMoveRel (cb : V2d -> 'msg) : Attribute<'msg> =
     onEvent "onmousemove" [" toFixedV2d(relativePerc(event,'container'))"] (List.head >> Pickler.json.UnPickleOfString >> cb)
 
-let sw = System.Diagnostics.Stopwatch.StartNew()
-
 let update (model : Table) (msg : Message) =
     match msg with
         | StartBench -> 
@@ -264,7 +262,6 @@ let update (model : Table) (msg : Message) =
             { model with dragedAttribute = None}
             
         | Done -> 
-            printfn "took: %A" (sw.Elapsed.TotalSeconds - model.lastUpdateTime)
             model
         | MouseMove coord ->
             let header = model.header
@@ -294,7 +291,7 @@ let update (model : Table) (msg : Message) =
                                 | Some a -> model.weightingFunction input1 a delta |> HMap.ofList
                                 | None -> weights                             
 
-                            { model with weights = newWeights; lastUpdateTime = sw.Elapsed.TotalSeconds }
+                            { model with weights = newWeights }
                             //let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
                                     
                             //let prevWeight = sumTill weights model.visibleOrder a
