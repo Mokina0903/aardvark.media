@@ -93,7 +93,7 @@ type Message =
 type Table =
     {
         header : Map<string, Attribute>
-        weights : hmap<string, float> // pre filterd list contains only attribute of type BAR (numerical values)
+        weights : Map<string, float> // pre filterd list contains only attribute of type BAR (numerical values)
         rows : array<Row>
         visibleOrder : List<string>
         showOptions: bool
@@ -111,10 +111,11 @@ module Parsing =
     open System.IO
     open Aardvark.Base
 
-    let example1 = @"..\..\..\src\Scratch\01 - WeightingTest\resources\Camera.csv" //this path... orly?
+    let example1 = @"..\..\..\src\Scratch\01 - WeightingTest\resources\Camera_reduced.csv" //this path... orly?
 
     let getRowDescription (nameLine : string) (typeLine: string) : RowDescription  =
         let names = nameLine.Split(';') |> Array.toList
+        printfn  "%A" names
         let types = typeLine.Split(';') |> Array.toList
         let pairs = List.zip names types
         let nameParser =
@@ -220,14 +221,8 @@ module Parsing =
                 weights = 
                     h   
                     |> Map.filter ( fun k a -> a.kind = Bar Target.Max || a.kind = Bar Target.Min) 
-                    |> Map.map (fun k a -> 1.0/(float visibleOrd.Length-2.0)) //todo fix this
-                    |> HMap.ofMap
-                      //|> Map.map (fun key a -> 
-                      //      match a.kind with
-                      //      | Bar _ -> Some (1.0 / float (visibleOrd.Length-2)) //todo leave out non bar elements
-                      //      | _ -> None
-                      //   ) 
-                      //|> HMap.ofMap
+                    |> Map.map (fun k a -> 1.0/(float visibleOrd.Length-2.0)) 
+
                 visibleOrder = visibleOrd
                 showOptions = true
                 colors =

@@ -48,7 +48,7 @@ let CalculateScore model =
                     |> List.map (fun (k, v) ->
                         match model.visibleOrder |> List.contains k with
                             | true -> 
-                                match model.weights |> HMap.tryFind k with
+                                match model.weights |> Map.tryFind k with
                                     | Some w -> // w * (Value.toFloat v)
                                         let attr = model.header |> Map.find k //todo tryFind
                                         let stats = attr.stats
@@ -119,13 +119,13 @@ let createHisto (attribute: Attribute) (rows: Row array) (colors: Map<string, C4
             ]
     ]
 
-let rec sumTill (weights : hmap<'a, float>) (xs : list<'a>) (c : 'a) = 
+let rec sumTill (weights : Map<'a, float>) (xs : list<'a>) (c : 'a) = 
     match xs with
         | [] -> 0.0
         | x::xs ->  
             if x = c then 0.0
             else 
-                match weights |> HMap.tryFind x with
+                match weights |> Map.tryFind x with
                 | Some a -> 
                     a + sumTill weights xs c
                 | _ -> sumTill weights xs c
@@ -181,7 +181,7 @@ let update (model : Table) (msg : Message) =
                 | None -> model
 
         | SetWeight (name, value) ->
-            let newWeights = model.weights |> HMap.add name value
+            let newWeights = model.weights |> Map.add name value
             CalculateScore {model with weights = newWeights}
                  
         | AddAttribute key -> 
@@ -246,7 +246,7 @@ let update (model : Table) (msg : Message) =
                 visibleBarAttributes |> List.map (fun attribute  ->
                             (attribute.name, (1.0 / float (visibleBarAttributes).Length)))
                             |> Map.ofList
-            CalculateScore { model with weights = HMap.ofMap weights}
+            CalculateScore { model with weights}
             
         | ToggleOptions ->
             { model with showOptions = 
@@ -277,56 +277,22 @@ let update (model : Table) (msg : Message) =
                             let ordredAttribs = getVisibleBarAttributes header visibleOrder
                             let prevWeight = sumTill weights model.visibleOrder a
                             let thisWeight = 
-                                    match weights |> HMap.tryFind a with
+                                    match weights |> Map.tryFind a with
                                         | Some w -> w            
                                         | _ -> 0.0
                             let delta = (coord.X - (prevWeight + thisWeight))
                             let input1 = ordredAttribs |> List.map (fun a ->
-                                        let weight = match weights |> HMap.tryFind a.name with
+                                        let weight = match weights |> Map.tryFind a.name with
                                                      |Some w -> w
                                                      | _ -> 0.0
                                         a.name, weight)
                             let newWeights =
                                 match attribute with
-                                | Some a -> model.weightingFunction input1 a delta |> HMap.ofList
+                                | Some a -> model.weightingFunction input1 a delta |> Map.ofList
                                 | None -> weights                             
 
                             { model with weights = newWeights }
-                            //let visibleBarAttributes = getVisibleBarAttributes model.header model.visibleOrder
-                                    
-                            //let prevWeight = sumTill weights model.visibleOrder a
-                            //let thisWeight = 
-                            //    match weights |> HMap.tryFind a with
-                            //    | Some (Some w) -> w            
-                            //    | _ -> 0.0
-                            //match (thisWeight <= 0.0 && ((coord.X - (prevWeight + thisWeight)) <= 0.0)) with
-                            //    | true -> model
-                            //    | false ->
-                            //        //printfn "this weight now: %.10f" (thisWeight)
-                            //        let newWeights = model.weights |> HMap.add a (Some ((coord.X - prevWeight) |> clamp 0.0  1.0))
-                            //        //printfn "changed by %.10f, coordX = %.10f" (coord.X - (prevWeight + thisWeight)) coord.X
-                            
-                            //        let oldBudget = (1.0 - (prevWeight + thisWeight)) 
-                            //        let newBudget = (1.0 - coord.X) |> clamp 0.0 1.0                    
-                            //        let scale = (newBudget/oldBudget) |> max 0.0 
-     
-                                                               
-                            //        let actualIndex = visibleBarAttributes |> List.findIndex (fun a -> a.name == currentAttr.name)
-
-                            //        //printfn "old: %.10f new %.10f" oldBudget newBudget
-                            //        let attributesToNormalize = snd (visibleBarAttributes |> List.splitAt (actualIndex+1)) |> List.map ( fun e -> e.name)                            
-                            //        let normalizedNewWeights = 
-                            //            newWeights |> HMap.map (fun k a -> 
-                            //                match attributesToNormalize|> List.contains k with
-                            //                | true -> match a with
-                            //                            | Some a ->
-                            //                                printfn "attr: %s a: %.10f a*scale %.10f" k a (a * scale |> clamp 0.0 1.0)
-                            //                                Some (a * scale |> clamp 0.0 1.0) 
-                            //                            | _ -> None
-                            //                | false -> a
-                            //            )                           
-                            //        { model with weights = normalizedNewWeights }
-
+                        
                             
         | _ -> model
 
