@@ -246,7 +246,7 @@ let update (model : Table) (msg : Message) =
                 visibleBarAttributes |> List.map (fun attribute  ->
                             (attribute.name, (1.0 / float (visibleBarAttributes).Length)))
                             |> Map.ofList
-            CalculateScore { model with weights}
+            CalculateScore { model with weights = weights}
             
         | ToggleOptions ->
             { model with showOptions = 
@@ -259,7 +259,7 @@ let update (model : Table) (msg : Message) =
             { model with dragedAttribute =  Some key}
 
         | StopDrag ->
-            { model with dragedAttribute = None}
+            CalculateScore { model with dragedAttribute = None}
             
         | Done -> 
             model
@@ -319,6 +319,7 @@ let view (model : MTable) =
                             let! rows = model.rows
                             let! showOptions = model.showOptions
                             let! colors = model.colors
+                            let! weights = model.weights
 
                             yield thead [] [
                                 // histograms      
@@ -384,30 +385,21 @@ let view (model : MTable) =
                                                         | _ ->
                                                             yield th [] [                                           
                                                                 div[clazz "ui input"] [
-
-                                                                    let onChangeWeight (s : string) = 
+                                                                    input [clazz "weightInput"; "type" => "number"; onChange (fun s ->
+                                                               
                                                                         let num = System.Double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture)
+                                                                        
                                                                         let value = 
                                                                             match num with
                                                                                 | (true, v) -> v
                                                                                 | (false, _) -> 0.0
                                                                         SetWeight (visibleName, value)
-
-                                                                    let attribs = 
-                                                                        amap {
-                                                                            yield clazz "weightInput"; 
-                                                                            yield "type" => "number"; 
-                                                                            yield onChange onChangeWeight;
-                                                                            let! currentWeight = 
-                                                                                adaptive {
-                                                                                    let! v = AMap.tryFind visibleName model.weights
-                                                                                    match v with
-                                                                                        | Some v -> return sprintf "%.2f" v                                                                    
-                                                                                        | None -> return "0.0"
-                                                                                }
-                                                                            yield "value" => currentWeight
-                                                                        } |> AttributeMap.ofAMap
-                                                                    yield Incremental.input attribs        
+                                                                        );
+                                                                        "value" =>
+                                                                            match weights|> Map.tryFind visibleName with
+                                                                                | Some v -> sprintf "%.2f" v
+                                                                                | _ -> "0.0"
+                                                                    ]
                                                                 ]
                                                                                                       
                                                                 button [clazz targetButtonClass; clazz "targetButtons"
@@ -470,27 +462,24 @@ let view (model : MTable) =
                                                     visibleOrder |> List.map (fun key -> 
                                                         let value = row.values |> Map.find key
                                                         let attribute = headers |> Map.find key
-                                                        let w = 
-                                                            adaptive {
-                                                                let! v = AMap.tryFind key model.weights
-                                                                match v with
-                                                                    | Some w -> return w                                                                  
-                                                                    | None -> return 0.0
-                                                            }
+                                                        let w =                                                  
+                                                            
+                                                            match weights |> Map.tryFind key with
+                                                                | Some w ->  w                                                                  
+                                                                | None -> 0.0
+                                                           
                                                            
                                                         let width = 
-                                                            adaptive {
-                                                                let! w = w
                                                                 match attribute.kind with
                                                                     |Kind.Bar target -> 
                                                                         let stats = attribute.stats
                                                                         let v = value |>  Value.toFloat 
 
                                                                         match target with
-                                                                            | Max -> return w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
-                                                                            | Min ->  return w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
-                                                                        | _ -> return 0.0
-                                                            }
+                                                                            | Max -> w * ((v - stats.min) * 100.0 / (stats.max - stats.min))
+                                                                            | Min ->  w * (100.0 - ((v - stats.min) * 100.0 / (stats.max - stats.min)))
+                                                                        | _ -> 0.0
+                                                            
                                                         let (background, fontColor) =
                                                             getColors attribute.name colors
                                                     
@@ -499,16 +488,9 @@ let view (model : MTable) =
                                                             | true -> "selected"
                                                             | _ -> "selectable"
 
-                                                        let attributes =
-                                                            amap {
-                                                                yield clazz selected; yield onMouseMove (fun _ -> Highlight (key, true)); yield onMouseLeave (fun _ -> Highlight (key, false))
-                                                                let! w = width
-                                                                yield style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" w (background));
-                                                            } |> AttributeMap.ofAMap
-                                            
-                                                        Incremental.div attributes AList.empty
+                                                        div [clazz selected; style (sprintf "height: 100%%; width: %.2f%%; background: %s; float: left" width background); onMouseMove (fun _ -> Highlight (key, true)); onMouseLeave (fun _ -> Highlight (key, false))] []
                                                     )
-                                   
+                                                                                       
                                                 let stackBar = div [clazz "scoreWrapper"; clazz "innerScore"] manyDiffs
                                                 div [clazz "outerScore"][
                                                     stackBar;
@@ -526,6 +508,7 @@ let view (model : MTable) =
                 alist {
                     let! visibleOrder = model.visibleOrder
                     let! headers = model.header
+                    let! weights = model.weights
                     let visibleBarAttributes = getVisibleBarAttributes headers visibleOrder
 
                     //let! weights = model.weights
@@ -533,17 +516,15 @@ let view (model : MTable) =
 
                     let! dragedAttr = model.dragedAttribute
 
-                    for attribute in visibleBarAttributes do
-                                            
-                        let! width =
-
-
-                            adaptive {
-                                let! w = AMap.tryFind attribute.name model.weights
-                                match w with
-                                    | None -> return 0.0
-                                    | Some w -> return w * 99.9
-                            }
+                    for name in visibleOrder do
+                        let attribute = headers |> Map.find name    
+                        let width =
+                            match attribute.kind with
+                                | Kind.Bar _ -> match weights |> Map.tryFind name with
+                                                | Some w -> w * 99.9
+                                                | _ -> 0.0
+                                | _ -> 0.0
+                            
 
                         let (background, fontColor) =
                             getColors attribute.name colors
@@ -607,15 +588,6 @@ let view (model : MTable) =
                 button [onClick (fun _ -> StartBench)] [text "start benchmark"]
             ]
 
-            div [] [
-                Incremental.div AttributeMap.empty <|
-                    alist {
-                        let! w = model.weights |> AMap.toMod
-                        yield onBoot "aardvark.processEvent('__ID__', 'finished');" (
-                            div [onEvent "finished" [] (fun _ -> Done)] []
-                        )
-                    }
-            ]
         //    alist {
         //        let! a = model.value
         //        for i in 0 .. 10 do
